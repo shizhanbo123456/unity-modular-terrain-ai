@@ -49,6 +49,24 @@
 
 ---
 
+## 命令总览（所有流经命令总线的命令）
+
+> 本桥接层是**命令总线**：所有命令（无论来自本工具的原生命令，还是来自 `modular-terrain` 等挂载在总线上的「插件」命令）都经 `BridgeServer` 接收、`BridgeDispatcher` 反射分发、主线程执行。下方为当前**全部命令**的统一编目，新增命令也在此登记。
+
+| 命令 (bus name) | 类别 | 提供方 | 功能 | Python CLI | 关键参数 |
+|---|---|---|---|---|---|
+| `scene.tree` | 场景读取 | 桥接层（原生） | 树状返回当前激活场景的物体层级 | `tree` | `components`(bool, 可选，显组件类型) |
+| `mesh.bounds` | 资源查询 | 桥接层（原生） | 计算 Assets 中 mesh / 模型 / prefab 的轴对齐包围盒（AABB，多网格合并） | `mesh-bounds`（别名 `bounds`） | `path`(string, Assets 相对路径) |
+| `prefab.screenshot` | 资源查询 | 桥接层（原生） | 隔离复制 prefab 到 `(9999,9999,9999)` + 相机环绕 `LookAt` 渲染存 PNG（支持正交/透视、`fov`、`bg`、补光） | `screenshot`（别名 `shot`） | `path`、`output`(.png)、`offset`("x,y,z")、`orthographic`、`fov`、`width`、`height`、`bg`、`light` |
+| `bridge.ping` | 系统 | 桥接层（原生） | 连通性测试，返回 `pong` + 服务器时间 | 无专用子命令（用 `client.ping()` 或 `client.call("bridge.ping")` / 原始 TCP） | 无 |
+| `bridge.list_commands` | 系统 | 桥接层（原生） | 列出所有已注册命令（含插件命令） | `list`（别名 `ls`） | 无 |
+| `terrain.sync_config` | 地形 / 领域 | modular-terrain（总线插件） | 将 Python 端地形配置同步到管理器预制体（固定路径 `Assets/ModularTerrainManager.prefab`，不存在则创建、在别处则移回）；校验 `sizePrecision > 0` | `terrain-sync`（别名 `tsync`） | `sizePrecision`(number > 0)、`moduleDirectories`(array\<string\>) |
+
+**参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，`terrain.sync_config` 见 **[modular-terrain/README.md](../modular-terrain/README.md)**（该命令由 terrain 模块提供，仅挂载于本总线）。
+新增任意命令的方式见「五、如何扩展新命令」——只需写一个带 `[BridgeCommand]` 的静态方法，无需改动总线。
+
+---
+
 ## 二、目录结构
 
 ```
