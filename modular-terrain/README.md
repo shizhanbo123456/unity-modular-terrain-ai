@@ -12,7 +12,12 @@ modular-terrain/
 │       └── ModularTerrain/     # 本模块 C# 代码
 │           ├── ModularTerrainModule.cs    # 模块地形组件
 │           ├── ModularTerrainManager.cs   # 模块化地形管理器（Mono）
-│           └── TerrainSyncConfigCommand.cs # 桥接命令 terrain.sync_config（反射注册）
+│           ├── TerrainLayoutIO.cs         # 排布 CSV 共享读写 + TerrainLayoutCell 信息结构体
+│           ├── TerrainCommandHelper.cs    # 管理器预制体定位/创建/归位（编辑器）
+│           ├── TerrainConfigCommands.cs   # 桥接命令 terrain.config_get/set
+│           ├── TerrainModuleCommands.cs   # 桥接命令 terrain.module_*
+│           ├── TerrainLayoutCommands.cs   # 桥接命令 terrain.layout_*
+│           └── Resources/TerrainLayout.csv # 排布数据（默认空仅表头）
 └── README.md
 ```
 
@@ -49,6 +54,8 @@ modular-terrain/
 | `sizePrecision` | `float` | 最小尺寸精度。之后处理的所有尺寸都必须是该数的整数倍 |
 | `moduleDirectories` | `List<string>` | 模块（prefab / 资源）所在目录列表（Assets 相对路径） |
 | `modules` | `List<ModularTerrainModule>` | **地形模块的存储容器**：由 `LoadModules()` 根据 `moduleDirectories` 扫描资源目录、加载所有含 `ModularTerrainModule` 的资源并写入；也可用 `CollectModules()` 收集场景实例 |
+| `layout` | `Dictionary<Vector2Int, TerrainLayoutCell>` | **地形排布全量缓存**：`Awake` 时从 CSV 全量读取，键为网格坐标 `Vector2Int(x,z)`，值为 `TerrainLayoutCell`（含 `moduleId` / `rotation` / `height`）。供 `LoadTerrainModule` 按坐标实例化 |
+| `gridStepX` / `gridStepZ` | `float` | 网格坐标到世界位置的步长（米）。`cell(x,z)` 的底面中心世界坐标 = 管理器位置 + `(x*gridStepX, height, z*gridStepZ)` |
 
 辅助方法：
 - `LoadModules()`（**编辑器内**）：按 `moduleDirectories` 用 `AssetDatabase` 扫描并加载所有含 `ModularTerrainModule` 的 prefab/资源，写入 `modules`；无效目录跳过并告警，重复资源自动去重；收集后自动调用 `AssignIds()`
@@ -58,9 +65,32 @@ modular-terrain/
 - `GetModulesWithValidSize()`：返回 `modules` 中尺寸符合 `sizePrecision` 精度的模块（按精度条件筛选）
 - `IsValidSize(float)`：校验尺寸是否为精度整数倍
 - `SnapToPrecision(float)`：吸附到最近的精度整数倍
+- `LoadLayoutFromCsv()`：从 CSV 全量读取排布到 `layout` 字典（文件缺失则置空）
+- `Awake()`：唤醒时调用 `LoadLayoutFromCsv()`，使 `layout` 立即可用
+- `LoadTerrainModule(int x, int z)`：按坐标从 `layout` 读取排布信息，实例化对应模块预制体到场景（已存在则先卸载再重载）；坐标无记录或模块 id 找不到时打印告警并跳过
+- `UnloadTerrainModule(int x, int z)`：销毁坐标 `(x,z)` 处已实例化的地形模块（无实例则忽略）
+- 编辑器右键菜单：`加载全部排布模块` / `卸载全部排布模块`（先确保 `modules` 已加载）
 
 > `LoadModules()` 依赖 `AssetDatabase`，仅编辑器可用（已用 `#if UNITY_EDITOR` 隔离）。类是运行时组件，
 > 但「从资源目录加载模块」这一步必须在编辑器内完成。
+
+### 排布实例化（管理器运行时 API）
+
+排布数据存在 CSV，但**真正把模块摆进场景**由管理器在运行时完成：
+
+1. **`Awake` 全量读取**：管理器唤醒时调用 `LoadLayoutFromCsv()`，把 CSV 整个读入 `layout`
+   （`Dictionary<Vector2Int, TerrainLayoutCell>`，键为网格坐标，值为 `{moduleId, rotation, height}`）。
+   CSV 读取/写入逻辑统一在 `TerrainLayoutIO`（`Read()` / `WriteAll()`），与管理器、`terrain.layout_*` 命令共用，避免重复解析。
+2. **`LoadTerrainModule(x, z)`**：在网格 `(x,z)` 处实例化模块。流程：
+   - 从 `layout` 取该坐标的 `TerrainLayoutCell`；无记录则跳过；
+   - 用 `GetModuleById(cell.moduleId)` 定位模块预制体，找不到则跳过；
+   - 世界坐标 = `transform.position + (x*gridStepX, cell.height, z*gridStepZ)`，
+     朝向 = `Quaternion.Euler(0, cell.rotation, 0)`，挂到管理器下并命名 `TerrainModule_x_z_id{n}`；
+   - 若该坐标已有实例，先卸载旧实例再重新加载（便于刷新）。
+3. **`UnloadTerrainModule(x, z)`**：精确销毁坐标 `(x,z)` 处的实例。
+
+> 实例化需要 `modules` 列表中的模块引用（编辑器内 `LoadModules()` 已填充并序列化进管理器预制体）。
+> 要把地形放进场景，需把 `ModularTerrainManager` 预制体实例化进场景，再用上述 API 或编辑器菜单加载。
 
 ## 配置同步（terrain.sync_config）
 
