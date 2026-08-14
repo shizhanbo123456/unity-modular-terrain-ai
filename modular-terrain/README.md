@@ -92,7 +92,7 @@ modular-terrain/
 > 实例化需要 `modules` 列表中的模块引用（编辑器内 `LoadModules()` 已填充并序列化进管理器预制体）。
 > 要把地形放进场景，需把 `ModularTerrainManager` 预制体实例化进场景，再用上述 API 或编辑器菜单加载。
 
-## 配置同步（terrain.sync_config）
+## 全局配置（terrain.config_get / terrain.config_set）
 
 全局配置（sizePrecision + moduleDirectories）的唯一真相源是 **Unity 管理器预制体**；Python 仅作为下发指令的通道，不在本地保存任何副本文件。
 

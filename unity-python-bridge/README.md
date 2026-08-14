@@ -109,7 +109,8 @@ UnityPythonBridge/
     ├── unity_bridge/
     │   ├── __init__.py
     │   ├── client.py                     # TCP/JSON 客户端 UnityClient
-    │   ├── cli.py                        # 命令行入口（tree / list / mesh-bounds / screenshot / terrain-sync）
+    │   ├── cli.py                        # 命令行入口（tree / list / mesh-bounds / screenshot / terrain-config-* / terrain-module-* / terrain-layout-* / layout-recommend）
+    │   ├── terrain_checks.py             # 相邻边高度校验 + 模块推荐（纯几何，layout-set / layout-recommend 复用）
     │   └── __main__.py                   # 支持 python -m unity_bridge
     ├── scripts/
     │   └── mock_unity_server.py          # 模拟 Unity 侧协议，无 Unity 也能联调
@@ -166,13 +167,21 @@ python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png --offs
 python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-8" \
     --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
 
-# 将地形全局配置同步到 Unity 管理器预制体（tsync 为别名）
-#   Unity 管理器是唯一数据源，Python 不保存本地副本
-python -m unity_bridge terrain-sync --precision 0.5 \
+# 将全局配置写入 Unity 管理器预制体（tset 为别名；Unity 是唯一数据源，Python 不保存本地副本）
+python -m unity_bridge terrain-config-set --precision 0.5 \
     --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
 
-# 读取 Unity 管理器中的全局配置
-python -m unity_bridge terrain-sync --read
+# 读取 Unity 管理器中的全局配置（tget 为别名）
+python -m unity_bridge terrain-config-get
+
+# 列出所有已加载模块（含自动分配的 id、description、四边高度）
+python -m unity_bridge module-list
+
+# 在网格 (2,3) 放置模块 id=1：朝向 90°、高度 0.5（写入前 Python 强制校验相邻高度拼接）
+python -m unity_bridge layout-set --x 2 --z 3 --moduleId 1 --rotation 90 --height 0.5
+
+# 推荐 (2,3) 处可无缝拼接的模块（id / 描述 / 可行旋转 / 所需高度）
+python -m unity_bridge layout-recommend --x 2 --z 3
 
 # 自定义端口
 python -m unity_bridge tree --port 21928
@@ -351,7 +360,7 @@ namespace UnityPythonBridge.Commands
 python -m unity_bridge call debug.log --message "hello"
 ```
 
-> `call` 通用子命令暂未实现（当前有 tree / list），如有需要可以加，或直接用 Python API：
+> `call` 通用子命令暂未实现（当前已有 tree / list / mesh-bounds / screenshot 以及 terrain-config-* / terrain-module-* / terrain-layout-* / layout-recommend 等子命令），如有需要可以加，或直接用 Python API：
 > ```python
 > from unity_bridge import UnityClient
 > with UnityClient() as c:
