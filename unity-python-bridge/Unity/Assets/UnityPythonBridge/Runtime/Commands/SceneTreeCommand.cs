@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -72,3 +73,4 @@ namespace UnityPythonBridge.Commands
         }
     }
 }
+#endif // UNITY_EDITOR

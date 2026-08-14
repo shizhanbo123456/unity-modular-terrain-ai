@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -33,3 +34,4 @@ namespace UnityPythonBridge.Commands
         }
     }
 }
+#endif // UNITY_EDITOR

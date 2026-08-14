@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -75,3 +76,4 @@ namespace UnityPythonBridge
         public static IReadOnlyDictionary<string, BridgeCommandInfo> CommandMap => Commands;
     }
 }
+#endif // UNITY_EDITOR

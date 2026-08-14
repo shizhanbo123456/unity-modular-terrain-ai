@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 namespace UnityPythonBridge
 {
     /// <summary>
@@ -33,3 +34,4 @@ namespace UnityPythonBridge
         }
     }
 }
+#endif // UNITY_EDITOR

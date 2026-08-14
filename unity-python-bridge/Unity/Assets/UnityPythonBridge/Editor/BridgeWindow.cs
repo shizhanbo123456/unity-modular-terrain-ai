@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
 
@@ -111,3 +112,4 @@ namespace UnityPythonBridge.EditorTools
         }
     }
 }
+#endif // UNITY_EDITOR
