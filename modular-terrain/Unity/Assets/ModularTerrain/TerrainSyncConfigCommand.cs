@@ -23,12 +23,14 @@ namespace ModularTerrain
     /// 返回:
     ///   { prefabPath, created, sizePrecision, moduleDirectories, moduleCount }
     /// </summary>
-    [BridgeCommand("terrain.sync_config",
-        "将 Python 端配置同步到管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)")]
     public static class TerrainSyncConfigCommand
     {
         private const string ManagerPrefabPath = "Assets/ModularTerrainManager.prefab";
 
+        // 与 unity-python-bridge 原生命令完全一致的注册方式：
+        // [BridgeCommand] 打在静态方法上，由 BridgeDispatcher 反射扫描所有程序集自动发现。
+        [BridgeCommand("terrain.sync_config",
+            "将 Python 端配置同步到管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)")]
         public static object Execute(BridgeContext ctx, JObject args)
         {
             // 1) 校验参数
