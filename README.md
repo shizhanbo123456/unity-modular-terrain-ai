@@ -31,9 +31,9 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 
 > **底座已就绪**：`unity-python-bridge/` 已实现 TCP + 单行 JSON 协议、反射自动注册命令、
-> 主线程安全执行，并包含 `scene.tree` / `mesh.bounds` / `prefab.screenshot` 等命令。
-> 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器与 `terrain.sync_config`
-> 配置同步命令（数据层 + 接线）。"地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
+> 主线程安全执行，当前共 **10 条命令**（桥接层原生 5 条 + modular-terrain 插件 5 条），详见下方「三、可用命令一览」。
+> 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器与各 `terrain.*` 命令（数据层 + 接线）。
+> "地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
 
 ---
 
@@ -69,7 +69,36 @@ unity-modular-terrain-ai/
 
 ---
 
-## 三、快速开始（底座验证）
+## 三、可用命令一览（共 10 条）
+
+所有命令都流经 `unity-python-bridge` 命令总线（TCP + 单行 JSON，反射分发，主线程执行）。
+按提供方分为两组；详细参数与返回结构见 **[unity-python-bridge/README.md](unity-python-bridge/README.md)**。
+
+**A. 桥接层原生命令（5 条）**
+
+| 命令 | CLI | 作用 |
+|---|---|---|
+| `scene.tree` | `tree` | 树状打印当前场景物体层级（`--components` 显示组件） |
+| `mesh.bounds` | `mesh-bounds` / `bounds` | 计算 Assets 中 mesh/模型/prefab 的轴对齐包围盒 |
+| `prefab.screenshot` | `screenshot` / `shot` | 隔离复制 prefab 并渲染存 PNG（支持正交/透视/补光） |
+| `bridge.ping` | （无，用 `client.ping()`） | 连通性测试，返回 pong + 时间 |
+| `bridge.list_commands` | `list` / `ls` | 列出所有已注册命令 |
+
+**B. modular-terrain 插件命令（5 条）**
+
+| 命令 | CLI | 作用 |
+|---|---|---|
+| `terrain.sync_config` | `terrain-sync` / `tsync`（`--read` 读取） | 全局配置读写（唯一数据源 = Unity 管理器预制体） |
+| `terrain.module_list` | `module-list` / `mlist` | 打印所有已加载模块信息列表 |
+| `terrain.module_size` | `module-size` / `msize` | 计算指定 id 模块尺寸 |
+| `terrain.module_snap` | `module-snap` / `msnap` | 把指定 id 模块尺寸吸附到精度整数倍 |
+| `terrain.module_set` | `module-set` / `mset` | 按 id 设置模块指定字段（可多参数） |
+
+> 插件命令的 C# 实现位于 `modular-terrain/Unity/Assets/ModularTerrain/`，由桥接层反射自动发现，无需在桥接层写任何地形相关代码。
+
+---
+
+## 四、快速开始（底座验证）
 
 1. **Unity 侧**：把 `unity-python-bridge/Unity/Assets/UnityPythonBridge` 拷入你的项目
    `Assets/`，安装 `com.unity.nuget.newtonsoft-json`，菜单 **Tools → Unity Python Bridge →
@@ -86,7 +115,7 @@ unity-modular-terrain-ai/
 
 ---
 
-## 四、AI 模块化地形工作流 · 路线规划
+## 五、AI 模块化地形工作流 · 路线规划
 
 当前仅底座就绪。后续分阶段目标（待实现）：
 
@@ -104,7 +133,7 @@ unity-modular-terrain-ai/
 
 ---
 
-## 五、设计原则
+## 六、设计原则
 
 - **通信与业务解耦**：`unity-python-bridge` 只负责"安全地把命令送到 Unity 主线程并执行"，
   地形逻辑全部写在命令层和 Python 工作流侧。

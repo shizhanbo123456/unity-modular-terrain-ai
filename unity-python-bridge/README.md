@@ -51,22 +51,32 @@
 
 ## 命令总览（所有流经命令总线的命令）
 
-> 本桥接层是**命令总线**：所有命令（无论来自本工具的原生命令，还是来自 `modular-terrain` 等挂载在总线上的「插件」命令）都经 `BridgeServer` 接收、`BridgeDispatcher` 反射分发、主线程执行。下方为当前**全部命令**的统一编目，新增命令也在此登记。
+> 本桥接层是**命令总线**：所有命令（无论来自本工具的原生命令，还是来自 `modular-terrain` 等挂载在总线上的「插件」命令）都经 `BridgeServer` 接收、`BridgeDispatcher` 反射分发、主线程执行。
+> 当前共 **10 条命令**：原生命令 5 条 + modular-terrain 插件命令 5 条。下方按提供方分组编目，新增命令也在此登记。
 
-| 命令 (bus name) | 类别 | 提供方 | 功能 | Python CLI | 关键参数 |
-|---|---|---|---|---|---|
-| `scene.tree` | 场景读取 | 桥接层（原生） | 树状返回当前激活场景的物体层级 | `tree` | `components`(bool, 可选，显组件类型) |
-| `mesh.bounds` | 资源查询 | 桥接层（原生） | 计算 Assets 中 mesh / 模型 / prefab 的轴对齐包围盒（AABB，多网格合并） | `mesh-bounds`（别名 `bounds`） | `path`(string, Assets 相对路径) |
-| `prefab.screenshot` | 资源查询 | 桥接层（原生） | 隔离复制 prefab 到 `(9999,9999,9999)` + 相机环绕 `LookAt` 渲染存 PNG（支持正交/透视、`fov`、`bg`、补光） | `screenshot`（别名 `shot`） | `path`、`output`(.png)、`offset`("x,y,z")、`orthographic`、`fov`、`width`、`height`、`bg`、`light` |
-| `bridge.ping` | 系统 | 桥接层（原生） | 连通性测试，返回 `pong` + 服务器时间 | 无专用子命令（用 `client.ping()` 或 `client.call("bridge.ping")` / 原始 TCP） | 无 |
-| `bridge.list_commands` | 系统 | 桥接层（原生） | 列出所有已注册命令（含插件命令） | `list`（别名 `ls`） | 无 |
-| `terrain.sync_config` | 地形 / 全局配置 | modular-terrain（总线插件） | 全局模块配置**读写**，**唯一数据源为 Unity 管理器预制体**（Python 不另存副本）：`action="write"` 将 sizePrecision+moduleDirectories 写入管理器预制体；`action="read"` 由 Unity 经 API 返回其当前配置（不解析 prefab 文件） | `terrain-sync`（别名 `tsync`；`--read` 进入读取模式） | 写：`sizePrecision`(>0)、`moduleDirectories`(array\<string\>)；读：无 |
-| `terrain.module_list` | 地形 / 模块 | modular-terrain（总线插件） | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | `module-list`（别名 `mlist`） | 无 |
-| `terrain.module_size` | 地形 / 模块 | modular-terrain（总线插件） | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（别名 `msize`） | `id`(int, 必填) |
-| `terrain.module_snap` | 地形 / 模块 | modular-terrain（总线插件） | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（别名 `msnap`） | `id`(int, 必填) |
-| `terrain.module_set` | 地形 / 模块 | modular-terrain（总线插件） | 按 id 设置模块指定字段（仅设置传入的参数，可多参数同时设置） | `module-set`（别名 `mset`） | `id`(int, 必填)、`sizeX`/`length`、`sizeZ`/`width`、`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选) |
+### A. 桥接层原生命令（5 条）
 
-**参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，地形相关命令（`terrain.sync_config` 及 `terrain.module_*`）见 **[modular-terrain/README.md](../modular-terrain/README.md)**（这些命令由 terrain 模块提供，仅挂载于本总线，但同样流经本命令总线）。
+| 命令 (bus name) | 类别 | 功能 | Python CLI | 关键参数 |
+|---|---|---|---|---|
+| `scene.tree` | 场景读取 | 树状返回当前激活场景的物体层级 | `tree` | `components`(bool, 可选，显组件类型) |
+| `mesh.bounds` | 资源查询 | 计算 Assets 中 mesh / 模型 / prefab 的轴对齐包围盒（AABB，多网格合并） | `mesh-bounds`（`bounds`） | `path`(string, Assets 相对路径) |
+| `prefab.screenshot` | 资源查询 | 隔离复制 prefab 到 `(9999,9999,9999)` + 相机环绕 `LookAt` 渲染存 PNG（支持正交/透视、`fov`、`bg`、补光） | `screenshot`（`shot`） | `path`、`output`(.png)、`offset`("x,y,z")、`orthographic`、`fov`、`width`、`height`、`bg`、`light` |
+| `bridge.ping` | 系统 | 连通性测试，返回 `pong` + 服务器时间 | 无专用子命令（`client.ping()` / `client.call("bridge.ping")` / 原始 TCP） | 无 |
+| `bridge.list_commands` | 系统 | 列出所有已注册命令（含插件命令） | `list`（`ls`） | 无 |
+
+### B. modular-terrain 插件命令（5 条）
+
+> 这些命令由地形模块提供，命名空间 `ModularTerrain`，由桥接层反射扫描所有程序集自动发现，**同样流经本命令总线**；详细参数与返回结构见 **[modular-terrain/README.md](../modular-terrain/README.md)**。
+
+| 命令 (bus name) | 类别 | 功能 | Python CLI | 关键参数 |
+|---|---|---|---|---|
+| `terrain.sync_config` | 全局配置 | 全局模块配置**读写**，**唯一数据源为 Unity 管理器预制体**（Python 不另存副本）：`write` 写 sizePrecision+moduleDirectories；`read` 由 Unity 经 API 返回当前配置（不解析 prefab 文件） | `terrain-sync`（`tsync`；`--read` 进入读取模式） | 写：`sizePrecision`(>0)、`moduleDirectories`(array\<string\>)；读：无 |
+| `terrain.module_list` | 模块 | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | `module-list`（`mlist`） | 无 |
+| `terrain.module_size` | 模块 | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（`msize`） | `id`(int, 必填) |
+| `terrain.module_snap` | 模块 | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（`msnap`） | `id`(int, 必填) |
+| `terrain.module_set` | 模块 | 按 id 设置模块指定字段（仅设置传入的参数，可多参数同时设置） | `module-set`（`mset`） | `id`(int, 必填)；`sizeX`/`length`、`sizeZ`/`width`、`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选) |
+
+**参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，地形相关命令见 **[modular-terrain/README.md](../modular-terrain/README.md)**。
 新增任意命令的方式见「五、如何扩展新命令」——只需写一个带 `[BridgeCommand]` 的静态方法，无需改动总线。
 
 ---
