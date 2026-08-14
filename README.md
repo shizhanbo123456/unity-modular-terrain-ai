@@ -60,16 +60,16 @@ unity-modular-terrain-ai/
     └── Unity/Assets/ModularTerrain/  # C# 侧：复制到 Unity 项目 Assets/ 下
         ├── ModularTerrainModule.cs     # 模块地形组件（含 Gizmos 无盖无底盒子）
         ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表）
-        └── TerrainSyncConfigCommand.cs # 桥接命令 terrain.sync_config（反射自动注册）
+        └── TerrainConfigCommands.cs    # 桥接命令 terrain.config_get / terrain.config_set（反射自动注册）
 ```
 
 > `modular-terrain/` 是地形工作流的**数据层**：组件与管理器定义地形模块规范，
-> `terrain.sync_config` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
+> `terrain.config_get` / `terrain.config_set` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
 > 后续会逐步新增 `terrain/` （地形 DSL 与 AI 生成脚本）等子目录。
 
 ---
 
-## 三、可用命令一览（共 10 条）
+## 三、可用命令一览（共 11 条）
 
 所有命令都流经 `unity-python-bridge` 命令总线（TCP + 单行 JSON，反射分发，主线程执行）。
 按提供方分为两组；详细参数与返回结构见 **[unity-python-bridge/README.md](unity-python-bridge/README.md)**。
@@ -84,11 +84,12 @@ unity-modular-terrain-ai/
 | `bridge.ping` | （无，用 `client.ping()`） | 连通性测试，返回 pong + 时间 |
 | `bridge.list_commands` | `list` / `ls` | 列出所有已注册命令 |
 
-**B. modular-terrain 插件命令（5 条）**
+**B. modular-terrain 插件命令（6 条）**
 
 | 命令 | CLI | 作用 |
 |---|---|---|
-| `terrain.sync_config` | `terrain-sync` / `tsync`（`--read` 读取） | 全局配置读写（唯一数据源 = Unity 管理器预制体） |
+| `terrain.config_get` | `terrain-config-get` / `tget` | 读取 Unity 管理器中的全局配置（唯一数据源 = Unity 管理器预制体） |
+| `terrain.config_set` | `terrain-config-set` / `tset` | 将全局配置写入 Unity 管理器预制体 |
 | `terrain.module_list` | `module-list` / `mlist` | 打印所有已加载模块信息列表 |
 | `terrain.module_size` | `module-size` / `msize` | 计算指定 id 模块尺寸 |
 | `terrain.module_snap` | `module-snap` / `msnap` | 把指定 id 模块尺寸吸附到精度整数倍 |

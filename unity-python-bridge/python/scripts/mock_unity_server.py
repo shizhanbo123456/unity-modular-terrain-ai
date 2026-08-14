@@ -47,7 +47,8 @@ COMMANDS = [
     {"name": "scene.tree", "description": "以树状结构返回当前场景中的物体层级。参数: components(bool)"},
     {"name": "mesh.bounds", "description": "计算 Assets 中网格/模型/预制体的轴对齐包围盒。参数: path(string)"},
     {"name": "prefab.screenshot", "description": "将预制体复制到场景隔离位置并截图保存为 PNG。参数: path(string), offset{x,y,z}, output(string,.png), orthographic(bool), fov(number), width(int), height(int), bg(string)"},
-    {"name": "terrain.sync_config", "description": "全局模块配置读写。参数: action(\"write\"|\"read\"), sizePrecision(number>0), moduleDirectories(array<string>)"},
+    {"name": "terrain.config_get", "description": "读取 Unity 管理器预制体中的全局模块配置。无参数"},
+    {"name": "terrain.config_set", "description": "将全局模块配置写入 Unity 管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)"},
     {"name": "terrain.module_list", "description": "打印模块信息列表。无参数"},
     {"name": "terrain.module_size", "description": "计算指定 id 模块的尺寸。参数: id(int)"},
     {"name": "terrain.module_snap", "description": "把指定 id 模块的尺寸吸附到精度整数倍。参数: id(int)"},
@@ -91,8 +92,10 @@ def handle_client(client: socket.socket) -> None:
                     data = mock_mesh_bounds(args.get("path", ""))
                 elif cmd == "prefab.screenshot":
                     data = mock_screenshot(args)
-                elif cmd == "terrain.sync_config":
-                    data = mock_sync_config(args)
+                elif cmd == "terrain.config_get":
+                    data = mock_config_get()
+                elif cmd == "terrain.config_set":
+                    data = mock_config_set(args)
                 elif cmd == "terrain.module_list":
                     data = mock_module_list()
                 elif cmd == "terrain.module_size":
@@ -174,16 +177,18 @@ def mock_screenshot(args: dict) -> dict:
     }
 
 
-def mock_sync_config(args: dict) -> dict:
-    """离线模拟 terrain.sync_config：read 返回 Unity 当前配置；write 回显并记忆配置。"""
-    action = args.get("action", "write")
-    if action == "read":
-        return {
-            "source": "unity",
-            "sizePrecision": MOCK_UNITY_CONFIG["sizePrecision"],
-            "moduleDirectories": MOCK_UNITY_CONFIG["moduleDirectories"],
-            "moduleCount": len(MOCK_UNITY_CONFIG["moduleDirectories"]),
-        }
+def mock_config_get() -> dict:
+    """离线模拟 terrain.config_get：返回 Unity 当前全局配置。"""
+    return {
+        "source": "unity",
+        "sizePrecision": MOCK_UNITY_CONFIG["sizePrecision"],
+        "moduleDirectories": MOCK_UNITY_CONFIG["moduleDirectories"],
+        "moduleCount": len(MOCK_UNITY_CONFIG["moduleDirectories"]),
+    }
+
+
+def mock_config_set(args: dict) -> dict:
+    """离线模拟 terrain.config_set：回显并记忆全局配置。"""
     size_precision = float(args.get("sizePrecision", 0.5))
     directories = list(args.get("moduleDirectories", []))
     if size_precision <= 0:

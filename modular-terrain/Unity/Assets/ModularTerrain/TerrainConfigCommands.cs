@@ -8,23 +8,21 @@ using Newtonsoft.Json.Linq;
 namespace ModularTerrain
 {
     /// <summary>
-    /// 命令 <c>terrain.sync_config</c>：全局模块配置（sizePrecision + moduleDirectories）的
-    /// 读取与写入，均经 unity-python-bridge 命令总线分发。
+    /// 全局模块配置（sizePrecision + moduleDirectories）的读取与写入命令，
+    /// 均经 unity-python-bridge 命令总线分发。拆分为两条独立命令（不再复用单命令 + action 区分）：
     ///
-    ///   action = "write"（默认）：将 Python 端配置写入 Unity 管理器预制体。
-    ///   action = "read"：由 Unity 通过 API 读取预制体组件的当前配置并返回（不解析 .prefab 文件）。
-    ///        Unity 管理器是全局配置的唯一数据源，Python 端不另存任何本地副本。
+    ///   terrain.config_get —— 读取 Unity 管理器预制体中的全局配置（经 Unity API，不解析 .prefab 文件）。
+    ///   terrain.config_set —— 将 sizePrecision + moduleDirectories 写入 Unity 管理器预制体。
     ///
+    /// Unity 管理器是全局配置的唯一数据源，Python 端不另存任何本地副本。
     /// 管理器预制体固定位于 Assets/ModularTerrainManager.prefab（不存在则创建；在别处则移回）。
     /// </summary>
-    [BridgeCommand("terrain.sync_config",
-        "全局模块配置读写。参数: action(\"write\"|\"read\", 默认 write), sizePrecision(number>0), moduleDirectories(array<string>)")]
-    public static class TerrainSyncConfigCommand
+    public static class TerrainConfigCommands
     {
-        public static object Execute(BridgeContext ctx, JObject args)
+        [BridgeCommand("terrain.config_get",
+            "读取 Unity 管理器预制体中的全局模块配置（sizePrecision + moduleDirectories）。无参数。")]
+        public static object ConfigGet(BridgeContext ctx, JObject args)
         {
-            string action = args.Value<string>("action") ?? "write";
-
             bool created;
             GameObject prefab = TerrainCommandHelper.LoadOrCreateManagerPrefab(out created);
             var manager = prefab.GetComponent<ModularTerrainManager>();
@@ -35,19 +33,29 @@ namespace ModularTerrain
                 manager = prefab.GetComponent<ModularTerrainManager>();
             }
 
-            // ---- 读取：由 Unity 返回其当前配置 ----
-            if (action == "read")
+            return new Dictionary<string, object>
             {
-                return new Dictionary<string, object>
-                {
-                    ["source"] = "unity",
-                    ["sizePrecision"] = manager.sizePrecision,
-                    ["moduleDirectories"] = manager.moduleDirectories,
-                    ["moduleCount"] = manager.moduleDirectories.Count,
-                };
+                ["source"] = "unity",
+                ["sizePrecision"] = manager.sizePrecision,
+                ["moduleDirectories"] = manager.moduleDirectories,
+                ["moduleCount"] = manager.moduleDirectories.Count,
+            };
+        }
+
+        [BridgeCommand("terrain.config_set",
+            "将全局模块配置写入 Unity 管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)")]
+        public static object ConfigSet(BridgeContext ctx, JObject args)
+        {
+            bool created;
+            GameObject prefab = TerrainCommandHelper.LoadOrCreateManagerPrefab(out created);
+            var manager = prefab.GetComponent<ModularTerrainManager>();
+            if (manager == null)
+            {
+                prefab.AddComponent<ModularTerrainManager>();
+                PrefabUtility.SavePrefabAsset(prefab);
+                manager = prefab.GetComponent<ModularTerrainManager>();
             }
 
-            // ---- 写入：修改 Unity 管理器预制体（Python 侧不保存任何本地副本文件） ----
             float sizePrecision = args.Value<float>("sizePrecision");
             if (sizePrecision <= 0f)
                 throw new System.ArgumentException("sizePrecision 必须为正数");

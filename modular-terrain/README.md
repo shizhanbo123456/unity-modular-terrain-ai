@@ -72,37 +72,35 @@ modular-terrain/
 
 > **全局模块配置（sizePrecision / moduleDirectories）只存储在 Unity 管理器预制体**
 > （`Assets/ModularTerrainManager.prefab`）中。Python 端不另存任何本地文件，
-> 读取用 `terrain-sync --read`，写入用 `terrain-sync --precision ... --dir ...`。
+> 读取用 `terrain.config_get`，写入用 `terrain.config_set`。
 
-### 同步命令（全局模块配置读写，唯一数据源 = Unity 管理器）
+### 全局配置命令（唯一数据源 = Unity 管理器）
 
-`terrain.sync_config`（桥接命令，由 `TerrainSyncConfigCommand.cs` 实现，反射自动注册）支持
-**写入**与**读取**两种模式（`action` 参数）。无论哪种模式，配置都只存在于 Unity 管理器预制体，
-Python 端不维护任何副本：
+全局配置的读取与写入拆分为两条**独立命令**（不再复用单命令 + action 区分），均经命令总线反射分发，由 `TerrainConfigCommands.cs` 实现：
 
-- **写入（默认 `action="write"`）**：接收 `sizePrecision` 与 `moduleDirectories`，写入管理器预制体。
+- **`terrain.config_get`（读取）**：由 Unity 通过 API 读取管理器预制体组件的当前配置并返回
+  （**不解析 .prefab 文件**）。不接收任何参数。
+  - 返回 `{ source:"unity", sizePrecision, moduleDirectories, moduleCount }`。
+- **`terrain.config_set`（写入）**：接收 `sizePrecision` 与 `moduleDirectories`，写入管理器预制体。
   - **管理器预制体固定位于 `Assets/ModularTerrainManager.prefab`**：
     - 不存在则创建（挂 `ModularTerrainManager` 并存为 prefab）；
     - 若在其它目录被发现，则**移回该固定位置**（实现「不允许移动到别的目录」约定）；
     - 随后写入并持久化（`SaveAssets`）。
   - 返回 `{ prefabPath, created, sizePrecision, moduleDirectories, moduleCount }`。
-- **读取（`action="read"`）**：由 Unity 通过 API 读取管理器预制体组件的当前配置并返回
-  （**不解析 .prefab 文件**）。Unity 管理器是全局配置的唯一数据源。
-  - 返回 `{ source:"unity", sizePrecision, moduleDirectories, moduleCount }`。
 
 Python 侧用法（`unity-python-bridge/python` 下）：
 
 ```bash
 # 写入：把命令行参数直接写入 Unity 管理器预制体（Python 不保存本地副本）
-python -m unity_bridge terrain-sync --precision 0.5 \
+python -m unity_bridge terrain-config-set --precision 0.5 \
     --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
 
 # 读取：打印 Unity 管理器中的全局配置（唯一数据源，不修改任何一侧）
-python -m unity_bridge terrain-sync --read
+python -m unity_bridge terrain-config-get
 ```
 
 > 写入前 Python 会用 `unity_project.ini` 中的 `assets_path` 校验每个模块目录是否真实存在于磁盘，
-> 不存在仅打印警告、不阻断同步。读取时不修改任何一侧。
+> 不存在仅打印警告、不阻断写入。读取时不修改任何一侧。
 
 ---
 

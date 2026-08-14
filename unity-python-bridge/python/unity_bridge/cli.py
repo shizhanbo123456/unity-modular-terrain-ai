@@ -9,9 +9,9 @@
     python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png \
         --offset "3,2,5" [--orthographic] [--fov 50] [--width 1920] [--height 1080] \
         [--bg "0.2,0.2,0.2,1"] [--light 1.5]
-    python -m unity_bridge terrain-sync --precision 0.5 \
+    python -m unity_bridge terrain-config-set --precision 0.5 \
         --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
-    python -m unity_bridge terrain-sync --read   # 读取 Unity 管理器中的全局配置
+    python -m unity_bridge terrain-config-get     # 读取 Unity 管理器中的全局配置
 """
 
 from __future__ import annotations
@@ -169,22 +169,27 @@ def _cmd_screenshot(args) -> int:
     return 0
 
 
-def _cmd_terrain_sync(args) -> int:
-    # 读取模式：打印 Unity 管理器中存储的全局配置（唯一数据源，不读任何本地文件）
-    if args.read:
-        with UnityClient(args.host, args.port, args.timeout) as client:
-            unity_cfg = client.get_terrain_config()
+def _cmd_terrain_config_get(args) -> int:
+    """读取模式：打印 Unity 管理器中存储的全局配置（唯一数据源，不读任何本地文件）。"""
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        unity_cfg = client.get_terrain_config()
 
-        print("=== Unity 管理器全局配置（唯一数据源） ===")
-        print(f"  source           : {unity_cfg.get('source')}")
-        print(f"  sizePrecision    : {unity_cfg.get('sizePrecision')}")
-        print(f"  moduleDirectories: {unity_cfg.get('moduleDirectories')}")
-        print(f"  moduleCount      : {unity_cfg.get('moduleCount')}")
+    if args.json:
+        print(json.dumps(unity_cfg, ensure_ascii=False, indent=2))
         return 0
 
-    # 写入模式：把命令行传入的配置写入 Unity 管理器预制体；Python 侧不保存任何本地副本
+    print("=== Unity 管理器全局配置（唯一数据源） ===")
+    print(f"  source           : {unity_cfg.get('source')}")
+    print(f"  sizePrecision    : {unity_cfg.get('sizePrecision')}")
+    print(f"  moduleDirectories: {unity_cfg.get('moduleDirectories')}")
+    print(f"  moduleCount      : {unity_cfg.get('moduleCount')}")
+    return 0
+
+
+def _cmd_terrain_config_set(args) -> int:
+    """写入模式：把命令行传入的配置写入 Unity 管理器预制体；Python 侧不保存任何本地副本。"""
     if args.precision is None:
-        print("[错误] 写入模式必须指定 --precision", file=sys.stderr)
+        print("[错误] 必须指定 --precision", file=sys.stderr)
         return 1
     precision = args.precision
     directories = list(args.dir or [])
@@ -200,7 +205,7 @@ def _cmd_terrain_sync(args) -> int:
                 print(f"[警告] 模块目录在磁盘上不存在: {abs_d}", file=sys.stderr)
 
     with UnityClient(args.host, args.port, args.timeout) as client:
-        data = client.sync_terrain_config(precision, directories)
+        data = client.set_terrain_config(precision, directories)
 
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
@@ -333,17 +338,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_shot.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_shot.set_defaults(func=_cmd_screenshot)
 
-    p_sync = sub.add_parser(
-        "terrain-sync", aliases=["tsync"],
-        help="将 Python 端地形配置同步到 Unity 管理器预制体")
-    p_sync.add_argument("--precision", type=float, default=None,
-                        help="最小尺寸精度（正数）。写入模式必填")
-    p_sync.add_argument("--dir", action="append", default=[],
-                        help="模块目录（Assets 相对路径），可多次指定")
-    p_sync.add_argument("--read", action="store_true",
-                        help="读取模式：打印 Unity 管理器中的全局配置（不修改任何一侧）")
-    p_sync.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
-    p_sync.set_defaults(func=_cmd_terrain_sync)
+    p_cfg_get = sub.add_parser(
+        "terrain-config-get", aliases=["tget"],
+        help="读取 Unity 管理器中的全局配置（sizePrecision + moduleDirectories）")
+    p_cfg_get.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_cfg_get.set_defaults(func=_cmd_terrain_config_get)
+
+    p_cfg_set = sub.add_parser(
+        "terrain-config-set", aliases=["tset"],
+        help="将全局模块配置写入 Unity 管理器预制体")
+    p_cfg_set.add_argument("--precision", type=float, default=None,
+                           help="最小尺寸精度（正数），必填")
+    p_cfg_set.add_argument("--dir", action="append", default=[],
+                           help="模块目录（Assets 相对路径），可多次指定")
+    p_cfg_set.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_cfg_set.set_defaults(func=_cmd_terrain_config_set)
 
     p_mlist = sub.add_parser(
         "module-list", aliases=["mlist"],

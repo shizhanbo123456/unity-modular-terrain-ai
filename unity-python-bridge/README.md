@@ -52,7 +52,7 @@
 ## 命令总览（所有流经命令总线的命令）
 
 > 本桥接层是**命令总线**：所有命令（无论来自本工具的原生命令，还是来自 `modular-terrain` 等挂载在总线上的「插件」命令）都经 `BridgeServer` 接收、`BridgeDispatcher` 反射分发、主线程执行。
-> 当前共 **10 条命令**：原生命令 5 条 + modular-terrain 插件命令 5 条。下方按提供方分组编目，新增命令也在此登记。
+> 当前共 **11 条命令**：原生命令 5 条 + modular-terrain 插件命令 6 条。下方按提供方分组编目，新增命令也在此登记。
 
 ### A. 桥接层原生命令（5 条）
 
@@ -70,7 +70,8 @@
 
 | 命令 (bus name) | 类别 | 功能 | Python CLI | 关键参数 |
 |---|---|---|---|---|
-| `terrain.sync_config` | 全局配置 | 全局模块配置**读写**，**唯一数据源为 Unity 管理器预制体**（Python 不另存副本）：`write` 写 sizePrecision+moduleDirectories；`read` 由 Unity 经 API 返回当前配置（不解析 prefab 文件） | `terrain-sync`（`tsync`；`--read` 进入读取模式） | 写：`sizePrecision`(>0)、`moduleDirectories`(array\<string\>)；读：无 |
+| `terrain.config_get` | 全局配置 | 读取 Unity 管理器预制体中的全局模块配置（sizePrecision + moduleDirectories），**唯一数据源为 Unity 管理器**（Python 不另存副本，经 Unity API 返回，不解析 prefab 文件） | `terrain-config-get`（`tget`） | 无 |
+| `terrain.config_set` | 全局配置 | 将全局模块配置（sizePrecision + moduleDirectories）写入 Unity 管理器预制体 | `terrain-config-set`（`tset`） | `sizePrecision`(>0)、`moduleDirectories`(array\<string\>) |
 | `terrain.module_list` | 模块 | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | `module-list`（`mlist`） | 无 |
 | `terrain.module_size` | 模块 | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（`msize`） | `id`(int, 必填) |
 | `terrain.module_snap` | 模块 | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（`msnap`） | `id`(int, 必填) |

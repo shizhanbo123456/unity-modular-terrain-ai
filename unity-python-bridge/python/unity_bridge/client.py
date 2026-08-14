@@ -125,23 +125,22 @@ class UnityClient:
             args["bg"] = bg
         return self.call("prefab.screenshot", **args)
 
-    def sync_terrain_config(self, size_precision: float, module_directories) -> dict:
-        """将全局模块配置写入 Unity 管理器预制体（action=write）。
+    def set_terrain_config(self, size_precision: float, module_directories) -> dict:
+        """将全局模块配置写入 Unity 管理器预制体（命令 terrain.config_set）。
 
         全局配置的唯一数据源是 Unity 管理器预制体；Python 侧不保存任何本地副本。
         size_precision 为最小尺寸精度（正数）；module_directories 为模块目录列表
         （Assets 相对路径字符串）。C# 侧会查找/创建 Assets 根目录下的管理器预制体并写入。
         """
         return self.call(
-            "terrain.sync_config",
-            action="write",
+            "terrain.config_set",
             sizePrecision=size_precision,
             moduleDirectories=list(module_directories),
         )
 
     def get_terrain_config(self) -> dict:
-        """读取 Unity 侧全局模块配置（action=read），由 Unity 返回其当前值（唯一数据源）。"""
-        return self.call("terrain.sync_config", action="read")
+        """读取 Unity 侧全局模块配置（命令 terrain.config_get），由 Unity 返回其当前值（唯一数据源）。"""
+        return self.call("terrain.config_get")
 
     def module_list(self) -> dict:
         """列出所有已加载地形模块的信息。"""
