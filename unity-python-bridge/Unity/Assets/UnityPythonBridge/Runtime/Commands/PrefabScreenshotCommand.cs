@@ -21,9 +21,10 @@ namespace UnityPythonBridge.Commands
     ///   width (int)          - 输出图片宽，默认 1920
     ///   height (int)         - 输出图片高，默认 1080
     ///   bg (string)          - 背景色 "r,g,b[,a]"（0~1），默认透明
+    ///   light (number)       - 补光强度，默认 0（不补光）；>0 时在相机就位后追加一盏与相机朝向一致的平行光
     ///
     /// 返回:
-    ///   { path, resolvedPath, output, cameraType, width, height, cameraPosition{x,y,z}, lookAt{x,y,z}, bytes }
+    ///   { path, resolvedPath, output, cameraType, width, height, cameraPosition{x,y,z}, lookAt{x,y,z}, fillLight, bytes }
     /// </summary>
     public static class PrefabScreenshotCommand
     {
@@ -33,7 +34,8 @@ namespace UnityPythonBridge.Commands
         [BridgeCommand("prefab.screenshot",
             "将目标预制体复制到场景隔离位置并截图保存为 PNG。参数: path(string), offset{x,y,z}, " +
             "output(string,.png), orthographic(bool,默认false), fov(number,默认Unity默认), " +
-            "width(int,默认1920), height(int,默认1080), bg(string r,g,b,a,默认透明)")]
+            "width(int,默认1920), height(int,默认1080), bg(string r,g,b,a,默认透明), " +
+            "light(number,默认0不补光;>0追加与相机同向平行光)")]
         public static object Capture(BridgeContext ctx, JObject args)
         {
             var path = args.Value<string>("path");
@@ -52,6 +54,7 @@ namespace UnityPythonBridge.Commands
             int width = Has(args, "width") ? args.Value<int>("width") : 1920;
             int height = Has(args, "height") ? args.Value<int>("height") : 1080;
             Color bg = ParseColor(args["bg"]);
+            double lightIntensity = Has(args, "light") ? args.Value<double>("light") : 0.0;
 
             var resolved = Normalize(path);
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(resolved);
@@ -64,6 +67,7 @@ namespace UnityPythonBridge.Commands
 
             GameObject instance = null;
             GameObject camGo = null;
+            GameObject lightGo = null;
             RenderTexture rt = null;
             Texture2D tex = null;
             try
@@ -80,6 +84,20 @@ namespace UnityPythonBridge.Commands
                 var camPos = Isolation + offset;
                 camGo.transform.position = camPos;
                 camGo.transform.LookAt(Isolation);
+
+                // 2.5) 补光：相机就位后追加一盏与相机朝向一致的平行光（light>0 时）
+                if (lightIntensity > 0)
+                {
+                    lightGo = new GameObject("BridgeFillLight");
+                    var fillLight = lightGo.AddComponent<Light>();
+                    fillLight.type = LightType.Directional;
+                    fillLight.intensity = (float)lightIntensity;
+                    fillLight.color = Color.white;
+                    fillLight.shadows = LightShadows.None;
+                    // 与相机同朝向：从相机方向打向物体，照亮相机所见的正面
+                    lightGo.transform.rotation = camGo.transform.rotation;
+                    lightGo.transform.position = camPos;
+                }
 
                 cam.orthographic = orthographic;
                 if (fov.HasValue)
@@ -120,6 +138,7 @@ namespace UnityPythonBridge.Commands
                     ["height"] = height,
                     ["cameraPosition"] = VecToJ(camPos),
                     ["lookAt"] = VecToJ(Isolation),
+                    ["fillLight"] = lightIntensity > 0 ? (object)lightIntensity : 0,
                     ["bytes"] = png.Length,
                 };
             }
@@ -128,6 +147,7 @@ namespace UnityPythonBridge.Commands
                 // 4) 无论成功与否，销毁临时对象，避免污染场景
                 if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
                 if (rt != null) RenderTexture.ReleaseTemporary(rt);
+                if (lightGo != null) UnityEngine.Object.DestroyImmediate(lightGo);
                 if (camGo != null) UnityEngine.Object.DestroyImmediate(camGo);
                 if (instance != null) UnityEngine.Object.DestroyImmediate(instance);
             }
