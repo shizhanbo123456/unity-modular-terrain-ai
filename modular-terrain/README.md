@@ -33,11 +33,13 @@ modular-terrain/
 |---|---|---|
 | `id` | `int` | 模块唯一标识。**0 = 未分配**；经管理器 `LoadModules()` / `CollectModules()` 收集后，会自动为 `id==0` 的模块分配正数（从已分配最大值 +1 起依次递增，多个未分配依次 +1、+2、+3…），并持久化到对应 prefab |
 | `description` | `string` | 模块描述（可选）。仅用于地形推荐时的可读性输出，**不参与几何计算** |
-| `moduleSize` | `Vector2` | 模块长宽（米）。**x = 长（世界 X 方向），y = 宽（世界 Z 方向）** |
 | `heightZPlus` | `float` | +Z 边（z+）接连处局部高度 |
 | `heightXPlus` | `float` | +X 边（x+）接连处局部高度 |
 | `heightZMinus` | `float` | -Z 边（z-）接连处局部高度 |
 | `heightXMinus` | `float` | -X 边（x-）接连处局部高度 |
+
+> **模块不持有尺寸** —— 本工作流约定「所有模块同尺寸」，统一尺寸由 `ModularTerrainManager.moduleSize` 持有。
+> 模块预制体的几何外形（mesh）需由制作者按 `moduleSize` 制作一致；编辑器 Gizmos 会从场景管理器读取 `moduleSize` 绘制盒子。
 
 几何约定：模块以自身 Transform 原点为底面中心（y=0 为底面），四条侧边各自从 y=0 延伸到该边高度。
 **相邻拼接约定**：模块四周墙顶的「世界高度」= 布局高度（placement height）+ 该边局部高度。
@@ -51,20 +53,16 @@ modular-terrain/
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sizePrecision` | `float` | 最小尺寸精度。之后处理的所有尺寸都必须是该数的整数倍 |
+| `moduleSize` | `float` | **统一模块尺寸（米）**。本工作流所有模块同尺寸，因此由管理器集中持有。网格坐标 `(x,z)` 对应的世界区域为 `[x*moduleSize, (x+1)*moduleSize] × [z*moduleSize, (z+1)*moduleSize]`，模块中心位于 `((x+0.5)*moduleSize, (z+0.5)*moduleSize)` |
 | `moduleDirectories` | `List<string>` | 模块（prefab / 资源）所在目录列表（Assets 相对路径） |
 | `modules` | `List<ModularTerrainModule>` | **地形模块的存储容器**：由 `LoadModules()` 根据 `moduleDirectories` 扫描资源目录、加载所有含 `ModularTerrainModule` 的资源并写入；也可用 `CollectModules()` 收集场景实例 |
 | `layout` | `Dictionary<Vector2Int, TerrainLayoutCell>` | **地形排布全量缓存**：`Awake` 时从 CSV 全量读取，键为网格坐标 `Vector2Int(x,z)`，值为 `TerrainLayoutCell`（含 `moduleId` / `rotation` / `height`）。供 `LoadTerrainModule` 按坐标实例化 |
-| `gridStepX` / `gridStepZ` | `float` | 网格坐标到世界位置的步长（米）。`cell(x,z)` 的底面中心世界坐标 = 管理器位置 + `(x*gridStepX, height, z*gridStepZ)`。**本工作流约定所有模块同尺寸**，因此 `Awake` 与每次 `terrain.layout_load` 都会调用 `RecalcGridStep()`，把它自动同步为第一个模块的尺寸（`gridStepX = 模块长 moduleSize.x`，`gridStepZ = 模块宽 moduleSize.y`），确保相邻格在世界中恰好贴合。模块库为空时保持当前值 |
 
 辅助方法：
 - `LoadModules()`（**编辑器内**）：按 `moduleDirectories` 用 `AssetDatabase` 扫描并加载所有含 `ModularTerrainModule` 的 prefab/资源，写入 `modules`；无效目录跳过并告警，重复资源自动去重；收集后自动调用 `AssignIds()`
 - `CollectModules()`：收集场景中已实例化的全部模块（含未激活物体）写入 `modules`；收集后自动调用 `AssignIds()`
 - `AssignIds()`（**编辑器内**）：为 `modules` 中 `id==0` 的模块自动分配正数（已分配最大值 +1 递增），并持久化到对应 prefab
 - `GetModuleById(int)`：按 id 在 `modules` 中查找模块组件（无则返回 null），供命令按 id 定位目标模块
-- `GetModulesWithValidSize()`：返回 `modules` 中尺寸符合 `sizePrecision` 精度的模块（按精度条件筛选）
-- `IsValidSize(float)`：校验尺寸是否为精度整数倍
-- `SnapToPrecision(float)`：吸附到最近的精度整数倍
 - `LoadLayoutFromCsv()`：从 CSV 全量读取排布到 `layout` 字典（文件缺失则置空）
 - `Awake()`：唤醒时调用 `LoadLayoutFromCsv()`，使 `layout` 立即可用
 - `LoadTerrainModule(int x, int z)`：按坐标从 `layout` 读取排布信息，实例化对应模块预制体到场景（已存在则先卸载再重载）；坐标无记录或模块 id 找不到时打印告警并跳过
@@ -84,7 +82,8 @@ modular-terrain/
 2. **`LoadTerrainModule(x, z)`**：在网格 `(x,z)` 处实例化模块。流程：
    - 从 `layout` 取该坐标的 `TerrainLayoutCell`；无记录则跳过；
    - 用 `GetModuleById(cell.moduleId)` 定位模块预制体，找不到则跳过；
-   - 世界坐标 = `transform.position + (x*gridStepX, cell.height, z*gridStepZ)`，
+   - 世界坐标 = `transform.position + ((x+0.5)*moduleSize, cell.height, (z+0.5)*moduleSize)`，
+     即该格世界区域 `[x*moduleSize,(x+1)*moduleSize]×[z*moduleSize,(z+1)*moduleSize]` 的正中；
      朝向 = `Quaternion.Euler(0, cell.rotation, 0)`，挂到管理器下并命名 `TerrainModule_x_z_id{n}`；
    - 若该坐标已有实例，先卸载旧实例再重新加载（便于刷新）。
 3. **`UnloadTerrainModule(x, z)`**：精确销毁坐标 `(x,z)` 处的实例。
@@ -98,8 +97,9 @@ modular-terrain/
 无需重载全部排布（适合迭代单个 tile、或在 AI 批量写入后逐步呈现）：
 
 - `terrain.layout_load`（CLI `layout-load` / `lload`）：按网格坐标 `(x,z)` 加载/刷新**单个**地形块。
-  命令会先刷新模块库（`LoadModules`）、把 `gridStep` 同步为模块尺寸、刷新排布（捕获最新 `layout_set` 写入），
-  再从 CSV 读取该格排布并实例化对应模块到场景；若该坐标已有实例则先卸载再重载。
+  命令会先刷新模块库（`LoadModules`）、刷新排布（捕获最新 `layout_set` 写入），再从 CSV 读取该格排布
+  并实例化对应模块到场景（模块中心落在 `((x+0.5)*moduleSize, (z+0.5)*moduleSize)`，相邻格自动贴合）；
+  若该坐标已有实例则先卸载再重载。
 - `terrain.layout_unload`（CLI `layout-unload` / `lunload`）：销毁 `(x,z)` 处已实例化的地形块（无实例则忽略）。
 
 这两个命令操作的是**场景中的管理器实例**（命令内用 `Object.FindObjectOfType` 查找，找不到则依据
@@ -107,7 +107,7 @@ modular-terrain/
 
 ## 全局配置（terrain.config_get / terrain.config_set）
 
-全局配置（sizePrecision + moduleDirectories）的唯一真相源是 **Unity 管理器预制体**；Python 仅作为下发指令的通道，不在本地保存任何副本文件。
+全局配置（moduleSize + moduleDirectories）的唯一真相源是 **Unity 管理器预制体**；Python 仅作为下发指令的通道，不在本地保存任何副本文件。
 
 ### 配置文件
 
@@ -117,7 +117,7 @@ modular-terrain/
   assets_path = D:/Projects/MyTerrainGame/Assets
   ```
 
-> **全局模块配置（sizePrecision / moduleDirectories）只存储在 Unity 管理器预制体**
+> **全局模块配置（moduleSize / moduleDirectories）只存储在 Unity 管理器预制体**
 > （`Assets/ModularTerrainManager.prefab`）中。Python 端不另存任何本地文件，
 > 读取用 `terrain.config_get`，写入用 `terrain.config_set`。
 
@@ -127,19 +127,19 @@ modular-terrain/
 
 - **`terrain.config_get`（读取）**：由 Unity 通过 API 读取管理器预制体组件的当前配置并返回
   （**不解析 .prefab 文件**）。不接收任何参数。
-  - 返回 `{ source:"unity", sizePrecision, moduleDirectories, moduleCount }`。
-- **`terrain.config_set`（写入）**：接收 `sizePrecision` 与 `moduleDirectories`，写入管理器预制体。
+  - 返回 `{ source:"unity", moduleSize, moduleDirectories, moduleCount }`。
+- **`terrain.config_set`（写入）**：接收 `moduleSize` 与 `moduleDirectories`，写入管理器预制体。
   - **管理器预制体固定位于 `Assets/ModularTerrainManager.prefab`**：
     - 不存在则创建（挂 `ModularTerrainManager` 并存为 prefab）；
     - 若在其它目录被发现，则**移回该固定位置**（实现「不允许移动到别的目录」约定）；
     - 随后写入并持久化（`SaveAssets`）。
-  - 返回 `{ prefabPath, created, sizePrecision, moduleDirectories, moduleCount }`。
+  - 返回 `{ prefabPath, created, moduleSize, moduleDirectories, moduleCount }`。
 
 Python 侧用法（`unity-python-bridge/python` 下）：
 
 ```bash
 # 写入：把命令行参数直接写入 Unity 管理器预制体（Python 不保存本地副本）
-python -m unity_bridge terrain-config-set --precision 0.5 \
+python -m unity_bridge terrain-config-set --size 10 \
     --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
 
 # 读取：打印 Unity 管理器中的全局配置（唯一数据源，不修改任何一侧）
@@ -158,13 +158,11 @@ python -m unity_bridge terrain-config-get
 
 | 命令 | CLI | 作用 | 关键参数 |
 |---|---|---|---|
-| `terrain.module_list` | `module-list`(`mlist`) | 打印所有已加载模块的信息列表（id / description / 长宽 / 四边高度） | 无 |
-| `terrain.module_size` | `module-size`(`msize`) | 计算指定 id 模块尺寸：长宽、四边高度、最大高度、是否符合精度 | `id`(int, 必填) |
-| `terrain.module_snap` | `module-snap`(`msnap`) | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `id`(int, 必填) |
-| `terrain.module_set` | `module-set`(`mset`) | 按 id 设置模块指定字段，**仅设置传入的参数**，可多参数同时设置 | `id`(int, 必填)；`--sizeX`/`--length`、`--sizeZ`/`--width`、`--hZPlus`、`--hXPlus`、`--hZMinus`、`--hXMinus`(float, 可选)、`--desc`(string, 可选，设置 description) |
+| `terrain.module_list` | `module-list`(`mlist`) | 打印所有已加载模块的信息列表（id / description / 四边高度） | 无 |
+| `terrain.module_set` | `module-set`(`mset`) | 按 id 设置模块指定字段，**仅设置传入的参数**，可多参数同时设置 | `id`(int, 必填)；`--hZPlus`、`--hXPlus`、`--hZMinus`、`--hXMinus`(float, 可选)、`--desc`(string, 可选，设置 description)。**注意：模块尺寸由管理器统一参数 `moduleSize` 持有，此处不可设置尺寸** |
 
-> `module_set` 的字段名对照：`sizeX`/`length` = `moduleSize.x`（长/世界 X），`sizeZ`/`width` = `moduleSize.y`（宽/世界 Z），
-> `hZPlus/hXPlus/hZMinus/hXMinus` = 四边高度。例如「设置 x 轴上的范围为 0-6」即 `--sizeX 6`。
+> 模块尺寸不再由模块自身持有（已移除各模块的 `moduleSize`），统一由 `ModularTerrainManager.moduleSize` 管理；
+> 因此不再有 `module_size` / `module_snap` 这类「按模块设尺寸 / 吸附精度」的命令。
 
 Python 侧用法（`unity-python-bridge/python` 下）：
 
@@ -172,17 +170,11 @@ Python 侧用法（`unity-python-bridge/python` 下）：
 # 列出所有已加载模块（含自动分配的 id）
 python -m unity_bridge module-list
 
-# 计算 id=1 模块的尺寸
-python -m unity_bridge module-size --id 1
+# 仅设置 id=1 的 +Z 边高度为 3（只改这一项，其余不动）
+python -m unity_bridge module-set --id 1 --hZPlus 3
 
-# 将 id=2 模块的尺寸吸附到精度整数倍
-python -m unity_bridge module-snap --id 2
-
-# 仅设置 id=1 的 X 长度为 6，以及 +Z 边高度为 3（只改这两项，其余不动）
-python -m unity_bridge module-set --id 1 --sizeX 6 --hZPlus 3
-
-# 同时设置多个：X 长度 8、Z 宽度 4、四边高度全部 2
-python -m unity_bridge module-set --id 1 --sizeX 8 --sizeZ 4 --hZPlus 2 --hXPlus 2 --hZMinus 2 --hXMinus 2
+# 同时设置多个四边高度，并补充描述
+python -m unity_bridge module-set --id 1 --hZPlus 2 --hXPlus 2 --hZMinus 2 --hXMinus 2 --desc "平直台阶"
 ```
 
 > 这些命令改的是模块预制体资源本身（非场景实例），修改经 `EditorUtility.SetDirty` + `AssetDatabase.SaveAssets` 持久化。

@@ -48,11 +48,9 @@ COMMANDS = [
     {"name": "mesh.bounds", "description": "计算 Assets 中网格/模型/预制体的轴对齐包围盒。参数: path(string)"},
     {"name": "prefab.screenshot", "description": "将预制体复制到场景隔离位置并截图保存为 PNG。参数: path(string), offset{x,y,z}, output(string,.png), orthographic(bool), fov(number), width(int), height(int), bg(string)"},
     {"name": "terrain.config_get", "description": "读取 Unity 管理器预制体中的全局模块配置。无参数"},
-    {"name": "terrain.config_set", "description": "将全局模块配置写入 Unity 管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)"},
-    {"name": "terrain.module_list", "description": "打印模块信息列表（含 description）。无参数"},
-    {"name": "terrain.module_size", "description": "计算指定 id 模块的尺寸。参数: id(int)"},
-    {"name": "terrain.module_snap", "description": "把指定 id 模块的尺寸吸附到精度整数倍。参数: id(int)"},
-    {"name": "terrain.module_set", "description": "按 id 设置模块指定字段。参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus(float), description(string)"},
+    {"name": "terrain.config_set", "description": "将全局模块配置写入 Unity 管理器预制体。参数: moduleSize(number>0), moduleDirectories(array<string>)"},
+    {"name": "terrain.module_list", "description": "打印模块信息列表（id / 描述 / 四边高度）。无参数"},
+    {"name": "terrain.module_set", "description": "按 id 设置模块指定字段。参数: id(int), hZPlus, hXPlus, hZMinus, hXMinus(float), description(string)"},
     {"name": "terrain.layout_get", "description": "读取范围内地形排布。参数: xmin,zmin,xmax,zmax(int，均可省略；省略返回全部)"},
     {"name": "terrain.layout_set", "description": "写入单个排布（Python 侧写入前强制校验相邻高度无缝拼接）。参数: x,z(int 网格坐标), moduleId(int), rotation(0/90/180/270 俯视顺时针), height(float)"},
     {"name": "terrain.layout_clear", "description": "清空地形排布，回到默认空 CSV。无参数"},
@@ -61,15 +59,16 @@ COMMANDS = [
 ]
 
 # 离线模拟的地形模块与全局配置（仅用于无 Unity 环境联调）
+# 模块本身不存尺寸，统一尺寸由 MOCK_UNITY_CONFIG["moduleSize"] 表示（本工作流所有模块同尺寸）
 MOCK_MODULES = [
-    {"id": 1, "sizeX": 10, "sizeZ": 10, "heightZPlus": 1, "heightXPlus": 1,
-     "heightZMinus": 1, "heightXMinus": 1, "description": "标准平地 10x10（四边等高）"},
-    {"id": 2, "sizeX": 20, "sizeZ": 10, "heightZPlus": 2, "heightXPlus": 2,
-     "heightZMinus": 2, "heightXMinus": 2, "description": "加高平地 20x10（四边等高）"},
-    {"id": 3, "sizeX": 10, "sizeZ": 10, "heightZPlus": 3, "heightXPlus": 1,
-     "heightZMinus": 1, "heightXMinus": 1, "description": "北高南低斜坡 10x10（+Z 边局部高 3）"},
+    {"id": 1, "heightZPlus": 1, "heightXPlus": 1,
+     "heightZMinus": 1, "heightXMinus": 1, "description": "标准平地（四边等高）"},
+    {"id": 2, "heightZPlus": 2, "heightXPlus": 2,
+     "heightZMinus": 2, "heightXMinus": 2, "description": "加高平地（四边等高）"},
+    {"id": 3, "heightZPlus": 3, "heightXPlus": 1,
+     "heightZMinus": 1, "heightXMinus": 1, "description": "北高南低斜坡（+Z 边局部高 3）"},
 ]
-MOCK_UNITY_CONFIG = {"sizePrecision": 0.5, "moduleDirectories": ["Assets/ModularTerrain/Modules"]}
+MOCK_UNITY_CONFIG = {"moduleSize": 10, "moduleDirectories": ["Assets/ModularTerrain/Modules"]}
 MOCK_LAYOUT: list = []  # 离线模拟的地形排布：[{x,z,moduleId,rotation,height}, ...]
 
 
@@ -108,10 +107,6 @@ def handle_client(client: socket.socket) -> None:
                     data = mock_config_set(args)
                 elif cmd == "terrain.module_list":
                     data = mock_module_list()
-                elif cmd == "terrain.module_size":
-                    data = mock_module_size(args)
-                elif cmd == "terrain.module_snap":
-                    data = mock_module_snap(args)
                 elif cmd == "terrain.module_set":
                     data = mock_module_set(args)
                 elif cmd == "terrain.layout_get":
@@ -201,7 +196,7 @@ def mock_config_get() -> dict:
     """离线模拟 terrain.config_get：返回 Unity 当前全局配置。"""
     return {
         "source": "unity",
-        "sizePrecision": MOCK_UNITY_CONFIG["sizePrecision"],
+        "moduleSize": MOCK_UNITY_CONFIG["moduleSize"],
         "moduleDirectories": MOCK_UNITY_CONFIG["moduleDirectories"],
         "moduleCount": len(MOCK_UNITY_CONFIG["moduleDirectories"]),
     }
@@ -209,16 +204,16 @@ def mock_config_get() -> dict:
 
 def mock_config_set(args: dict) -> dict:
     """离线模拟 terrain.config_set：回显并记忆全局配置。"""
-    size_precision = float(args.get("sizePrecision", 0.5))
+    module_size = float(args.get("moduleSize", 10))
     directories = list(args.get("moduleDirectories", []))
-    if size_precision <= 0:
-        raise ValueError("sizePrecision 必须为正数")
-    MOCK_UNITY_CONFIG["sizePrecision"] = size_precision
+    if module_size <= 0:
+        raise ValueError("moduleSize 必须为正数")
+    MOCK_UNITY_CONFIG["moduleSize"] = module_size
     MOCK_UNITY_CONFIG["moduleDirectories"] = directories
     return {
         "prefabPath": "Assets/ModularTerrainManager.prefab",
         "created": True,
-        "sizePrecision": size_precision,
+        "moduleSize": module_size,
         "moduleDirectories": directories,
         "moduleCount": len(directories),
     }
@@ -235,64 +230,19 @@ def mock_module_list() -> dict:
     """离线模拟 terrain.module_list。"""
     return {
         "count": len(MOCK_MODULES),
-        "precision": MOCK_UNITY_CONFIG["sizePrecision"],
+        "moduleSize": MOCK_UNITY_CONFIG["moduleSize"],
         "modules": [dict(m) for m in MOCK_MODULES],
     }
 
 
-def mock_module_size(args: dict) -> dict:
-    """离线模拟 terrain.module_size。"""
-    module_id = int(args["id"])
-    m = _find_mock_module(module_id)
-    max_h = max(m["heightZPlus"], m["heightXPlus"], m["heightZMinus"], m["heightXMinus"])
-    precision = MOCK_UNITY_CONFIG["sizePrecision"]
-    valid = (abs(round(m["sizeX"] / precision) - m["sizeX"] / precision) < 1e-4
-             and abs(round(m["sizeZ"] / precision) - m["sizeZ"] / precision) < 1e-4)
-    return {
-        "id": m["id"], "lengthX": m["sizeX"], "widthZ": m["sizeZ"],
-        "heightZPlus": m["heightZPlus"], "heightXPlus": m["heightXPlus"],
-        "heightZMinus": m["heightZMinus"], "heightXMinus": m["heightXMinus"],
-        "maxHeight": max_h, "precision": precision, "isValidSize": valid,
-    }
-
-
-def mock_module_snap(args: dict) -> dict:
-    """离线模拟 terrain.module_snap：把尺寸吸附到精度整数倍。"""
-    module_id = int(args["id"])
-    m = _find_mock_module(module_id)
-    precision = MOCK_UNITY_CONFIG["sizePrecision"]
-
-    def snap(v):
-        return round(v / precision) * precision
-
-    m["sizeX"] = snap(m["sizeX"])
-    m["sizeZ"] = snap(m["sizeZ"])
-    m["heightZPlus"] = snap(m["heightZPlus"])
-    m["heightXPlus"] = snap(m["heightXPlus"])
-    m["heightZMinus"] = snap(m["heightZMinus"])
-    m["heightXMinus"] = snap(m["heightXMinus"])
-    return {
-        "id": m["id"], "lengthX": m["sizeX"], "widthZ": m["sizeZ"],
-        "heightZPlus": m["heightZPlus"], "heightXPlus": m["heightXPlus"],
-        "heightZMinus": m["heightZMinus"], "heightXMinus": m["heightXMinus"],
-        "precision": precision, "snapped": True,
-    }
-
-
 def mock_module_set(args: dict) -> dict:
-    """离线模拟 terrain.module_set：仅设置传入的字段。"""
+    """离线模拟 terrain.module_set：仅设置传入的字段（尺寸由管理器统一持有，此处不可设）。"""
     module_id = int(args["id"])
     m = _find_mock_module(module_id)
     changed = []
-    for key in ("sizeX", "length", "sizeZ", "width", "hZPlus", "hXPlus", "hZMinus", "hXMinus"):
+    for key in ("hZPlus", "hXPlus", "hZMinus", "hXMinus"):
         if key in args and args[key] is not None:
-            val = float(args[key])
-            if key in ("sizeX", "length"):
-                m["sizeX"] = val
-            elif key in ("sizeZ", "width"):
-                m["sizeZ"] = val
-            else:
-                m[key] = val
+            m[key] = float(args[key])
             changed.append(key)
     if "description" in args and args["description"] is not None:
         m["description"] = str(args["description"])
@@ -301,7 +251,6 @@ def mock_module_set(args: dict) -> dict:
         raise ValueError("未提供任何要设置的字段")
     return {
         "id": m["id"], "changed": changed,
-        "sizeX": m["sizeX"], "sizeZ": m["sizeZ"],
         "heightZPlus": m["heightZPlus"], "heightXPlus": m["heightXPlus"],
         "heightZMinus": m["heightZMinus"], "heightXMinus": m["heightXMinus"],
         "description": m["description"],
@@ -374,7 +323,7 @@ def mock_layout_load(args: dict) -> dict:
         "x": x, "z": z,
         "loaded": found is not None,
         "moduleId": found["moduleId"] if found else -1,
-        "gridStepX": 10, "gridStepZ": 10,
+        "moduleSize": MOCK_UNITY_CONFIG["moduleSize"],
         "note": "场景实例化是 Unity-only 行为；mock 仅回显参数，不创建 GameObject",
     }
 

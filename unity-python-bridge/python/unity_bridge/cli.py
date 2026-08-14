@@ -9,7 +9,7 @@
     python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png \
         --offset "3,2,5" [--orthographic] [--fov 50] [--width 1920] [--height 1080] \
         [--bg "0.2,0.2,0.2,1"] [--light 1.5]
-    python -m unity_bridge terrain-config-set --precision 0.5 \
+    python -m unity_bridge terrain-config-set --size 10 \
         --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
     python -m unity_bridge terrain-config-get     # 读取 Unity 管理器中的全局配置
 """
@@ -180,7 +180,7 @@ def _cmd_terrain_config_get(args) -> int:
 
     print("=== Unity 管理器全局配置（唯一数据源） ===")
     print(f"  source           : {unity_cfg.get('source')}")
-    print(f"  sizePrecision    : {unity_cfg.get('sizePrecision')}")
+    print(f"  moduleSize       : {unity_cfg.get('moduleSize')}")
     print(f"  moduleDirectories: {unity_cfg.get('moduleDirectories')}")
     print(f"  moduleCount      : {unity_cfg.get('moduleCount')}")
     return 0
@@ -188,10 +188,10 @@ def _cmd_terrain_config_get(args) -> int:
 
 def _cmd_terrain_config_set(args) -> int:
     """写入模式：把命令行传入的配置写入 Unity 管理器预制体；Python 侧不保存任何本地副本。"""
-    if args.precision is None:
-        print("[错误] 必须指定 --precision", file=sys.stderr)
+    if args.size is None:
+        print("[错误] 必须指定 --size（统一模块尺寸，正数，米）", file=sys.stderr)
         return 1
-    precision = args.precision
+    module_size = args.size
     directories = list(args.dir or [])
 
     # 用 ini 中的 Assets 路径校验模块目录是否存在于磁盘（仅警告，不参与配置存储）
@@ -205,7 +205,7 @@ def _cmd_terrain_config_set(args) -> int:
                 print(f"[警告] 模块目录在磁盘上不存在: {abs_d}", file=sys.stderr)
 
     with UnityClient(args.host, args.port, args.timeout) as client:
-        data = client.set_terrain_config(precision, directories)
+        data = client.set_terrain_config(module_size, directories)
 
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
@@ -213,7 +213,7 @@ def _cmd_terrain_config_set(args) -> int:
 
     print(f"prefab    : {data.get('prefabPath')}")
     print(f"created   : {data.get('created')}")
-    print(f"precision : {data.get('sizePrecision')}")
+    print(f"moduleSize: {data.get('moduleSize')}")
     print(f"dirs      : {data.get('moduleCount')} 个 -> {data.get('moduleDirectories')}")
     return 0
 
@@ -224,63 +224,26 @@ def _cmd_module_list(args) -> int:
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
-    print(f"precision : {data.get('precision')}")
+    print(f"moduleSize: {data.get('moduleSize')}")
     print(f"count     : {data.get('count')}")
     for m in data.get("modules", []):
         desc = m.get("description", "")
         print(f"  id={m['id']:<3} desc={desc!r}")
-        print(f"      sizeX={m['sizeX']} sizeZ={m['sizeZ']} "
-              f"h(z+={m['heightZPlus']}, x+={m['heightXPlus']}, "
+        print(f"      h(z+={m['heightZPlus']}, x+={m['heightXPlus']}, "
               f"z-={m['heightZMinus']}, x-={m['heightXMinus']})")
-    return 0
-
-
-def _cmd_module_size(args) -> int:
-    with UnityClient(args.host, args.port, args.timeout) as client:
-        data = client.module_size(args.id)
-    if args.json:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
-        return 0
-    print(f"id         : {data.get('id')}")
-    print(f"lengthX    : {data.get('lengthX')}")
-    print(f"widthZ     : {data.get('widthZ')}")
-    print(f"heightZ+   : {data.get('heightZPlus')}")
-    print(f"heightX+   : {data.get('heightXPlus')}")
-    print(f"heightZ-   : {data.get('heightZMinus')}")
-    print(f"heightX-   : {data.get('heightXMinus')}")
-    print(f"maxHeight  : {data.get('maxHeight')}")
-    print(f"precision  : {data.get('precision')}")
-    print(f"isValidSize: {data.get('isValidSize')}")
-    return 0
-
-
-def _cmd_module_snap(args) -> int:
-    with UnityClient(args.host, args.port, args.timeout) as client:
-        data = client.module_snap(args.id)
-    if args.json:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
-        return 0
-    print(f"id         : {data.get('id')}")
-    print(f"lengthX    : {data.get('lengthX')}")
-    print(f"widthZ     : {data.get('widthZ')}")
-    print(f"heightZ+   : {data.get('heightZPlus')}")
-    print(f"heightX+   : {data.get('heightXPlus')}")
-    print(f"heightZ-   : {data.get('heightZMinus')}")
-    print(f"heightX-   : {data.get('heightXMinus')}")
-    print(f"precision  : {data.get('precision')}  (已吸附)")
     return 0
 
 
 def _cmd_module_set(args) -> int:
     fields = {}
-    for key in ("sizeX", "length", "sizeZ", "width", "hZPlus", "hXPlus", "hZMinus", "hXMinus"):
+    for key in ("hZPlus", "hXPlus", "hZMinus", "hXMinus"):
         val = getattr(args, key, None)
         if val is not None:
             fields[key] = val
     if getattr(args, "desc", None) is not None:
         fields["description"] = args.desc
     if not fields:
-        print("[错误] 未提供任何要设置的字段（如 --sizeX 6）", file=sys.stderr)
+        print("[错误] 未提供任何要设置的字段（如 --hZPlus 0.5 或 --desc '...'）", file=sys.stderr)
         return 1
 
     with UnityClient(args.host, args.port, args.timeout) as client:
@@ -290,8 +253,6 @@ def _cmd_module_set(args) -> int:
         return 0
     print(f"id      : {data.get('id')}")
     print(f"changed : {data.get('changed')}")
-    print(f"sizeX   : {data.get('sizeX')}")
-    print(f"sizeZ   : {data.get('sizeZ')}")
     print(f"hZ+ x+ z- x- : {data.get('heightZPlus')} {data.get('heightXPlus')} "
           f"{data.get('heightZMinus')} {data.get('heightXMinus')}")
     if "description" in (data.get("changed") or []):
@@ -352,8 +313,7 @@ def _cmd_layout_load(args) -> int:
     print(f"pos      : (x={data.get('x')}, z={data.get('z')})")
     print(f"loaded   : {data.get('loaded')}")
     print(f"moduleId : {data.get('moduleId')}")
-    print(f"gridStep : x={data.get('gridStepX')}  z={data.get('gridStepZ')}  "
-          f"(= 模块尺寸，因所有模块同尺寸)")
+    print(f"moduleSize: {data.get('moduleSize')}  (统一模块尺寸，因所有模块同尺寸)")
     return 0
 
 
@@ -376,7 +336,7 @@ def _cmd_layout_recommend(args) -> int:
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
     recs = data.get("recommendations", [])
-    print(f"target       : (x={data.get('x')}, z={data.get('z')})  precision={data.get('precision')}")
+    print(f"target       : (x={data.get('x')}, z={data.get('z')})  moduleSize={data.get('moduleSize')}")
     if data.get("desiredHeight") is not None:
         print(f"desiredHeight: {data.get('desiredHeight')}")
     print(f"count        : {data.get('count')}")
@@ -438,15 +398,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_cfg_get = sub.add_parser(
         "terrain-config-get", aliases=["tget"],
-        help="读取 Unity 管理器中的全局配置（sizePrecision + moduleDirectories）")
+        help="读取 Unity 管理器中的全局配置（moduleSize + moduleDirectories）")
     p_cfg_get.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_cfg_get.set_defaults(func=_cmd_terrain_config_get)
 
     p_cfg_set = sub.add_parser(
         "terrain-config-set", aliases=["tset"],
-        help="将全局模块配置写入 Unity 管理器预制体")
-    p_cfg_set.add_argument("--precision", type=float, default=None,
-                           help="最小尺寸精度（正数），必填")
+        help="将全局模块配置（moduleSize + moduleDirectories）写入 Unity 管理器预制体")
+    p_cfg_set.add_argument("--size", type=float, default=None,
+                           help="统一模块尺寸（正数，米，本工作流所有模块同尺寸），必填")
     p_cfg_set.add_argument("--dir", action="append", default=[],
                            help="模块目录（Assets 相对路径），可多次指定")
     p_cfg_set.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
@@ -454,32 +414,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mlist = sub.add_parser(
         "module-list", aliases=["mlist"],
-        help="打印所有已加载地形模块的信息列表")
+        help="打印所有已加载地形模块的信息列表（id / 描述 / 四边高度）")
     p_mlist.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_mlist.set_defaults(func=_cmd_module_list)
 
-    p_msize = sub.add_parser(
-        "module-size", aliases=["msize"],
-        help="计算指定 id 模块的尺寸（长宽/四边高度/最大高度/是否符合精度）")
-    p_msize.add_argument("--id", type=int, required=True, help="目标模块 id")
-    p_msize.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
-    p_msize.set_defaults(func=_cmd_module_size)
-
-    p_msnap = sub.add_parser(
-        "module-snap", aliases=["msnap"],
-        help="把指定 id 模块的尺寸吸附到精度整数倍")
-    p_msnap.add_argument("--id", type=int, required=True, help="目标模块 id")
-    p_msnap.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
-    p_msnap.set_defaults(func=_cmd_module_snap)
-
     p_mset = sub.add_parser(
         "module-set", aliases=["mset"],
-        help="按 id 设置模块指定字段（仅设置传入的参数，可同时设置多个）")
+        help="按 id 设置模块指定字段（四边高度 / 描述；尺寸由管理器统一参数持有，不可在此设置）")
     p_mset.add_argument("--id", type=int, required=True, help="目标模块 id")
-    p_mset.add_argument("--sizeX", type=float, default=None, help="设置 moduleSize.x（长/世界X）")
-    p_mset.add_argument("--length", type=float, default=None, help="同 --sizeX（别名）")
-    p_mset.add_argument("--sizeZ", type=float, default=None, help="设置 moduleSize.y（宽/世界Z）")
-    p_mset.add_argument("--width", type=float, default=None, help="同 --sizeZ（别名）")
     p_mset.add_argument("--hZPlus", type=float, default=None, help="设置 +Z 边高度")
     p_mset.add_argument("--hXPlus", type=float, default=None, help="设置 +X 边高度")
     p_mset.add_argument("--hZMinus", type=float, default=None, help="设置 -Z 边高度")

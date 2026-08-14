@@ -31,7 +31,7 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 
 > **底座已就绪**：`unity-python-bridge/` 已实现 TCP + 单行 JSON 协议、反射自动注册命令、
-> 主线程安全执行，当前共 **16 条命令**（桥接层原生 5 条 + modular-terrain 插件 11 条），详见下方「三、可用命令一览」。
+> 主线程安全执行，当前共 **14 条命令**（桥接层原生 5 条 + modular-terrain 插件 9 条），详见下方「三、可用命令一览」。
 > 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器、排布缓存与各 `terrain.*` 命令（数据层 + 接线）。
 > "地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
 
@@ -59,8 +59,8 @@ unity-modular-terrain-ai/
 └── modular-terrain/                # ← 模块化地形模块（数据层 + 地形专属桥接命令）
     ├── README.md                   #   模块文档（组件 / 管理器 / 配置同步 / 排布）
     └── Unity/Assets/ModularTerrain/  # C# 侧：复制到 Unity 项目 Assets/ 下
-        ├── ModularTerrainModule.cs     # 模块地形组件（含 id / description / 四边高度 + Gizmos 无盖无底盒子）
-        ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表 / CSV 全量缓存 / 按坐标加载·卸载）
+        ├── ModularTerrainModule.cs     # 模块地形组件（含 id / description / 四边高度 + Gizmos 无盖无底盒子；尺寸由管理器统一持有）
+        ├── ModularTerrainManager.cs    # 管理器 Mono（统一 moduleSize / 目录 / 模块列表 / CSV 全量缓存 / 按坐标加载·卸载）
         ├── TerrainLayoutIO.cs          # 共享 CSV 读写 + 信息结构体 TerrainLayoutCell（不依赖 UNITY_EDITOR）
         ├── TerrainConfigCommands.cs    # 桥接命令 terrain.config_get / terrain.config_set（反射自动注册）
         ├── TerrainModuleCommands.cs    # 桥接命令 terrain.module_*
@@ -78,7 +78,7 @@ unity-modular-terrain-ai/
 
 ---
 
-## 三、可用命令一览（共 16 条）
+## 三、可用命令一览（共 14 条）
 
 所有命令都流经 `unity-python-bridge` 命令总线（TCP + 单行 JSON，反射分发，主线程执行）。
 按提供方分为两组；详细参数与返回结构见 **[unity-python-bridge/README.md](unity-python-bridge/README.md)**。
@@ -93,16 +93,14 @@ unity-modular-terrain-ai/
 | `bridge.ping` | （无，用 `client.ping()`） | 连通性测试，返回 pong + 时间 |
 | `bridge.list_commands` | `list` / `ls` | 列出所有已注册命令 |
 
-**B. modular-terrain 插件命令（11 条）**
+**B. modular-terrain 插件命令（9 条）**
 
 | 命令 | CLI | 作用 |
 |---|---|---|
-| `terrain.config_get` | `terrain-config-get` / `tget` | 读取 Unity 管理器中的全局配置（唯一数据源 = Unity 管理器预制体） |
-| `terrain.config_set` | `terrain-config-set` / `tset` | 将全局配置写入 Unity 管理器预制体 |
-| `terrain.module_list` | `module-list` / `mlist` | 打印所有已加载模块信息列表 |
-| `terrain.module_size` | `module-size` / `msize` | 计算指定 id 模块尺寸 |
-| `terrain.module_snap` | `module-snap` / `msnap` | 把指定 id 模块尺寸吸附到精度整数倍 |
-| `terrain.module_set` | `module-set` / `mset` | 按 id 设置模块指定字段（可多参数） |
+| `terrain.config_get` | `terrain-config-get` / `tget` | 读取 Unity 管理器中的全局配置（moduleSize + moduleDirectories，唯一数据源 = Unity 管理器预制体） |
+| `terrain.config_set` | `terrain-config-set` / `tset` | 将全局配置（moduleSize + moduleDirectories）写入 Unity 管理器预制体 |
+| `terrain.module_list` | `module-list` / `mlist` | 打印所有已加载模块信息列表（id / description / 四边高度） |
+| `terrain.module_set` | `module-set` / `mset` | 按 id 设置模块四边高度与描述（尺寸由管理器统一 moduleSize 持有，不可在此设） |
 | `terrain.layout_get` | `layout-get` / `lget` | 读取范围内地形排布（数据存于 Unity Resources CSV） |
 | `terrain.layout_set` | `layout-set` / `lset` | 在 (x,z) 写入单条排布（moduleId/rotation/height） |
 | `terrain.layout_clear` | `layout-clear` / `lclear` | 清空排布，回到默认空 CSV |

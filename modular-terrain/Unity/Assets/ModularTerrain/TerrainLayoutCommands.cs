@@ -167,7 +167,6 @@ namespace ModularTerrain
             int z = ReqInt(args, "z");
             var mgr = GetSceneManager();
             mgr.LoadModules();        // 刷新模块引用（捕获最新 tile 库）
-            mgr.RecalcGridStep();     // 同步网格步进为模块尺寸
             mgr.LoadLayoutFromCsv();  // 刷新排布（捕获最新的 layout_set 写入）
             Vector2Int key = new Vector2Int(x, z);
             bool hasCell = mgr.layout.ContainsKey(key);
@@ -179,8 +178,7 @@ namespace ModularTerrain
                 ["z"] = z,
                 ["loaded"] = hasCell,
                 ["moduleId"] = moduleId,
-                ["gridStepX"] = mgr.gridStepX,
-                ["gridStepZ"] = mgr.gridStepZ,
+                ["moduleSize"] = mgr.moduleSize,
             };
         }
 

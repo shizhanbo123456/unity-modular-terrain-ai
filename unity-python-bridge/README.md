@@ -70,12 +70,10 @@
 
 | 命令 (bus name) | 类别 | 功能 | Python CLI | 关键参数 |
 |---|---|---|---|---|
-| `terrain.config_get` | 全局配置 | 读取 Unity 管理器预制体中的全局模块配置（sizePrecision + moduleDirectories），**唯一数据源为 Unity 管理器**（Python 不另存副本，经 Unity API 返回，不解析 prefab 文件） | `terrain-config-get`（`tget`） | 无 |
-| `terrain.config_set` | 全局配置 | 将全局模块配置（sizePrecision + moduleDirectories）写入 Unity 管理器预制体 | `terrain-config-set`（`tset`） | `sizePrecision`(>0)、`moduleDirectories`(array\<string\>) |
-| `terrain.module_list` | 模块 | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | `module-list`（`mlist`） | 无 |
-| `terrain.module_size` | 模块 | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（`msize`） | `id`(int, 必填) |
-| `terrain.module_snap` | 模块 | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（`msnap`） | `id`(int, 必填) |
-| `terrain.module_set` | 模块 | 按 id 设置模块指定字段（仅设置传入的参数，可多参数同时设置） | `module-set`（`mset`） | `id`(int, 必填)；`sizeX`/`length`、`sizeZ`/`width`、`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选) |
+| `terrain.config_get` | 全局配置 | 读取 Unity 管理器预制体中的全局模块配置（moduleSize + moduleDirectories），**唯一数据源为 Unity 管理器**（Python 不另存副本，经 Unity API 返回，不解析 prefab 文件） | `terrain-config-get`（`tget`） | 无 |
+| `terrain.config_set` | 全局配置 | 将全局模块配置（moduleSize + moduleDirectories）写入 Unity 管理器预制体 | `terrain-config-set`（`tset`） | `moduleSize`(>0)、`moduleDirectories`(array\<string\>) |
+| `terrain.module_list` | 模块 | 打印所有已加载模块的信息列表（id / description / 四边高度） | `module-list`（`mlist`） | 无 |
+| `terrain.module_set` | 模块 | 按 id 设置模块指定字段（四边高度与描述；模块尺寸由管理器统一 moduleSize 持有，不可在此设置） | `module-set`（`mset`） | `id`(int, 必填)；`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选)、`desc`(string, 可选) |
 | `terrain.layout_get` | 排布 | 读取 `[xmin,zmin,xmax,zmax]` 范围内地形排布（数据存于 Unity Resources CSV，四参数均可省略，省略返回全部） | `layout-get`（`lget`） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
 | `terrain.layout_set` | 排布 | 在 `(x,z)` 处写入单条排布（存在则覆盖）：`moduleId`、`rotation`(0/90/180/270 俯视顺时针)、`height`(float) | `layout-set`（`lset`） | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
 | `terrain.layout_clear` | 排布 | 清空地形排布，回到默认空 CSV（仅保留表头） | `layout-clear`（`lclear`） | 无 |
@@ -170,7 +168,7 @@ python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-
     --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
 
 # 将全局配置写入 Unity 管理器预制体（tset 为别名；Unity 是唯一数据源，Python 不保存本地副本）
-python -m unity_bridge terrain-config-set --precision 0.5 \
+python -m unity_bridge terrain-config-set --size 10 \
     --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
 
 # 读取 Unity 管理器中的全局配置（tget 为别名）

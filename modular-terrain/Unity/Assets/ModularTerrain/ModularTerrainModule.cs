@@ -11,10 +11,11 @@ namespace ModularTerrain
     /// 参数:
     ///   id (int) - 模块唯一标识。0 = 未分配；收集进管理器时自动分配正数。
     ///   description (string) - 模块描述（可选）。仅用于地形推荐时的可读性输出，不参与几何计算。
-    ///   moduleSize (Vector2) - 模块的长宽（单位：米）。
-    ///        x = 长（沿世界 X 方向），y = 宽（沿世界 Z 方向）。
     ///   heightZPlus / heightXPlus / heightZMinus / heightXMinus (float)
     ///        四个方向接连处（连接边）的局部高度，顺序为 (z+, x+, z-, x-)：
+    ///
+    ///  注意：模块本身不再存储尺寸 —— 统一的模块尺寸由 ModularTerrainManager.moduleSize 持有
+    ///  （本工作流所有模块同尺寸）。模块预制体的几何外形需由制作者按 moduleSize 制作一致。
     ///
     /// 相邻拼接约定（供 Python 侧校验/推荐使用）：
     ///   模块以自身原点为底面中心（y=0），四周墙顶世界高度 = 布局高度(placement height) + 该边局部高度。
@@ -37,9 +38,6 @@ namespace ModularTerrain
         [Tooltip("模块描述（可选）。用于地形推荐时的可读性输出，不参与几何计算。")]
         public string description = "";
 
-        [Tooltip("模块长宽（米）。x = 长（世界 X 方向），y = 宽（世界 Z 方向）。")]
-        public Vector2 moduleSize = new Vector2(10f, 10f);
-
         [Header("四边接连处局部高度（底 0 → 该边高度）")]
         [Tooltip("+Z 边（z+）接连处高度")]
         public float heightZPlus = 1f;
@@ -60,8 +58,12 @@ namespace ModularTerrain
             Gizmos.matrix = transform.localToWorldMatrix;
             Gizmos.color = WallColor;
 
-            float hl = moduleSize.x * 0.5f; // 半长 (X)
-            float hw = moduleSize.y * 0.5f; // 半宽 (Z)
+            // 模块本身不存尺寸，尺寸从场景管理器统一读取（本工作流所有模块同尺寸）
+            float s = 10f;
+            var mgr = Object.FindObjectOfType<ModularTerrainManager>();
+            if (mgr != null) s = mgr.moduleSize;
+            float hl = s * 0.5f; // 半长 (X)
+            float hw = s * 0.5f; // 半宽 (Z)
 
             // 四角（局部坐标，y=0）—— 顺序: (-X,-Z)(+X,-Z)(-X,+Z)(+X,+Z)
             Vector3 cXmZm = new Vector3(-hl, 0f, -hw);

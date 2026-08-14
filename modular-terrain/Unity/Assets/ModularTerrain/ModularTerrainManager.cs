@@ -10,9 +10,11 @@ namespace ModularTerrain
     /// 模块化地形管理器（场景级 MonoBehaviour）。
     ///
     /// 字段:
-    ///   sizePrecision (float)
-    ///        最小尺寸精度。之后处理的所有尺寸都必须是该数的整数倍
-    ///        （可用 IsValidSize 校验、SnapToPrecision 规范化）。
+    ///   moduleSize (float)
+    ///        统一模块尺寸（米）。本工作流所有模块同尺寸，因此由管理器集中持有：
+    ///        网格坐标 (x,z) 对应的世界区域为
+    ///          [x*moduleSize, (x+1)*moduleSize] × [z*moduleSize, (z+1)*moduleSize]，
+    ///        模块中心位于 ((x+0.5)*moduleSize, (z+0.5)*moduleSize)。
     ///   moduleDirectories (List&lt;string&gt;)
     ///        模块（prefab / 资源）所在的目录列表，使用 Assets 相对路径。
     ///   modules (List&lt;ModularTerrainModule&gt;)
@@ -27,8 +29,10 @@ namespace ModularTerrain
     /// </summary>
     public class ModularTerrainManager : MonoBehaviour
     {
-        [Tooltip("最小尺寸精度。之后处理的所有尺寸都必须是该数的整数倍。")]
-        public float sizePrecision = 0.5f;
+        [Tooltip("统一模块尺寸（米）。本工作流所有模块同尺寸；网格坐标 (x,z) 对应世界区域 " +
+                 "[x*moduleSize, (x+1)*moduleSize] × [z*moduleSize, (z+1)*moduleSize]，" +
+                 "模块中心位于 ((x+0.5)*moduleSize, (z+0.5)*moduleSize)。")]
+        public float moduleSize = 10f;
 
         [Tooltip("模块（prefab / 资源）所在的目录列表（Assets 相对路径）。")]
         public List<string> moduleDirectories = new List<string>();
@@ -48,12 +52,6 @@ namespace ModularTerrain
                  "供 UnloadTerrainModule 精确销毁。")]
         private Dictionary<Vector2Int, GameObject> loadedInstances =
             new Dictionary<Vector2Int, GameObject>();
-
-        [Header("网格步进（世界米）")]
-        [Tooltip("网格坐标到世界位置的步长。cell(x,z) 的底面中心世界坐标 = " +
-                 "管理器位置 + (x*gridStepX, height, z*gridStepZ)。")]
-        public float gridStepX = 10f;
-        public float gridStepZ = 10f;
 
         /// <summary>
         /// 根据 moduleDirectories 列出的 Assets 相对目录，扫描并加载所有包含
@@ -142,42 +140,6 @@ namespace ModularTerrain
             return null;
         }
 
-        /// <summary>
-        /// 返回 <see cref="modules"/> 中尺寸符合 sizePrecision 精度的模块
-        /// （moduleSize.x、moduleSize.y 均为精度整数倍）。
-        /// 便于在加载后按精度条件筛选可用模块。
-        /// </summary>
-        public List<ModularTerrainModule> GetModulesWithValidSize()
-        {
-            var result = new List<ModularTerrainModule>();
-            foreach (var m in modules)
-            {
-                if (m == null) continue;
-                if (IsValidSize(m.moduleSize.x) && IsValidSize(m.moduleSize.y))
-                    result.Add(m);
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// 判断一个尺寸是否为 <see cref="sizePrecision"/> 的整数倍（带极小浮点容差）。
-        /// </summary>
-        public bool IsValidSize(float size)
-        {
-            if (sizePrecision <= 0f) return true;
-            float ratio = size / sizePrecision;
-            return Mathf.Abs(ratio - Mathf.Round(ratio)) < 1e-4f;
-        }
-
-        /// <summary>
-        /// 把一个尺寸吸附到最近的精度整数倍（用于规范化）。
-        /// </summary>
-        public float SnapToPrecision(float size)
-        {
-            if (sizePrecision <= 0f) return size;
-            return Mathf.Round(size / sizePrecision) * sizePrecision;
-        }
-
         // ---- 地形排布：CSV 全量缓存 + 按坐标加载/卸载 ----
 
         /// <summary>
@@ -190,34 +152,12 @@ namespace ModularTerrain
         }
 
         /// <summary>
-        /// 唤醒时全量读取 CSV，使 layout 字典立即可供加载/卸载使用；
-        /// 并按「所有模块同尺寸」前提把网格步进同步为模块尺寸。
+        /// 唤醒时全量读取 CSV，使 layout 字典立即可供加载/卸载使用。
+        /// 模块统一尺寸由 <see cref="moduleSize"/> 字段持有（本工作流所有模块同尺寸）。
         /// </summary>
         private void Awake()
         {
             LoadLayoutFromCsv();
-            RecalcGridStep();
-        }
-
-        /// <summary>
-        /// 本工作流约定「所有模块同尺寸」，因此网格步进固定等于模块尺寸：
-        /// 取 <see cref="modules"/> 中第一个有效模块的长宽作为网格步进
-        /// （gridStepX = 模块长 moduleSize.x，gridStepZ = 模块宽 moduleSize.y）。
-        /// 这样相邻格 (x,z) 与 (x+1,z) 在世界中恰好贴合，既无重叠也无空隙。
-        /// 模块库为空时保持当前 gridStepX/gridStepZ 不变。
-        /// </summary>
-        public void RecalcGridStep()
-        {
-            if (modules == null) return;
-            foreach (var m in modules)
-            {
-                if (m != null)
-                {
-                    gridStepX = m.moduleSize.x;
-                    gridStepZ = m.moduleSize.y;
-                    return;
-                }
-            }
         }
 
         /// <summary>
@@ -260,7 +200,10 @@ namespace ModularTerrain
             GameObject inst = InstantiateModule(module.gameObject);
             inst.transform.SetParent(transform, true);
 
-            Vector3 worldPos = transform.position + new Vector3(x * gridStepX, cell.height, z * gridStepZ);
+            // 模块中心位于该格 World 区域正中：((x+0.5)*size, (z+0.5)*size)
+            float s = moduleSize;
+            Vector3 worldPos = transform.position +
+                new Vector3((x + 0.5f) * s, cell.height, (z + 0.5f) * s);
             inst.transform.position = worldPos;
             inst.transform.rotation = Quaternion.Euler(0f, cell.rotation, 0f);
             inst.name = $"TerrainModule_{x}_{z}_id{cell.moduleId}";

@@ -94,7 +94,7 @@ def check_placement(
     返回 (ok, errors)：ok=True 表示通过；errors 为不连续处的可读错误列表。
     被覆盖的自身单元格会被排除在邻居之外（因为将被新模块替换）。
 
-    注意：config 参数保留用于接口完整性（后续可按 sizePrecision 校验模块尺寸与网格的匹配），
+    注意：config 参数保留用于接口完整性（后续可按 moduleSize 校验模块尺寸与网格的匹配），
     当前相邻高度校验不依赖它。
     """
     errors: List[str] = []

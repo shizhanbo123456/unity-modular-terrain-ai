@@ -127,16 +127,17 @@ class UnityClient:
             args["bg"] = bg
         return self.call("prefab.screenshot", **args)
 
-    def set_terrain_config(self, size_precision: float, module_directories) -> dict:
+    def set_terrain_config(self, module_size: float, module_directories) -> dict:
         """将全局模块配置写入 Unity 管理器预制体（命令 terrain.config_set）。
 
         全局配置的唯一数据源是 Unity 管理器预制体；Python 侧不保存任何本地副本。
-        size_precision 为最小尺寸精度（正数）；module_directories 为模块目录列表
-        （Assets 相对路径字符串）。C# 侧会查找/创建 Assets 根目录下的管理器预制体并写入。
+        module_size 为统一模块尺寸（正数，单位米，本工作流所有模块同尺寸）；
+        module_directories 为模块目录列表（Assets 相对路径字符串）。
+        C# 侧会查找/创建 Assets 根目录下的管理器预制体并写入。
         """
         return self.call(
             "terrain.config_set",
-            sizePrecision=size_precision,
+            moduleSize=module_size,
             moduleDirectories=list(module_directories),
         )
 
@@ -148,18 +149,11 @@ class UnityClient:
         """列出所有已加载地形模块的信息。"""
         return self.call("terrain.module_list")
 
-    def module_size(self, module_id: int) -> dict:
-        """计算指定 id 模块的尺寸。"""
-        return self.call("terrain.module_size", id=module_id)
-
-    def module_snap(self, module_id: int) -> dict:
-        """把指定 id 模块的尺寸吸附到精度整数倍。"""
-        return self.call("terrain.module_snap", id=module_id)
-
     def module_set(self, module_id: int, **fields) -> dict:
         """按 id 设置模块指定字段（仅传入的字段会被设置，可同时设置多个）。
 
-        fields 可选键：sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus。
+        模块尺寸由管理器统一参数 moduleSize 持有，此处不可设置尺寸。
+        fields 可选键：hZPlus, hXPlus, hZMinus, hXMinus, description。
         """
         return self.call("terrain.module_set", id=module_id, **fields)
 
@@ -215,7 +209,7 @@ class UnityClient:
 
         每次都完整请求一遍全局配置、模块信息列表与当前排布，再调用 terrain_checks.recommend
         枚举候选模块的可行旋转与所需高度。返回:
-            {"x":, "z":, "desiredHeight":, "precision":, "count":, "recommendations": [...]}
+            {"x":, "z":, "desiredHeight":, "moduleSize":, "count":, "recommendations": [...]}
         每个推荐项含 id、description、rotations（[{rotation, height}]）。
         """
         config = self.get_terrain_config()
@@ -227,7 +221,7 @@ class UnityClient:
             "x": x,
             "z": z,
             "desiredHeight": desired_height,
-            "precision": config.get("sizePrecision"),
+            "moduleSize": config.get("moduleSize"),
             "count": len(recs),
             "recommendations": recs,
         }
