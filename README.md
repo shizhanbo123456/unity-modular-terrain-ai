@@ -56,20 +56,24 @@ unity-modular-terrain-ai/
 │       └── requirements.txt
 │
 └── modular-terrain/                # ← 模块化地形模块（数据层 + 地形专属桥接命令）
-    ├── README.md                   #   模块文档（组件 / 管理器 / 配置同步）
+    ├── README.md                   #   模块文档（组件 / 管理器 / 配置同步 / 排布）
     └── Unity/Assets/ModularTerrain/  # C# 侧：复制到 Unity 项目 Assets/ 下
         ├── ModularTerrainModule.cs     # 模块地形组件（含 Gizmos 无盖无底盒子）
         ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表）
-        └── TerrainConfigCommands.cs    # 桥接命令 terrain.config_get / terrain.config_set（反射自动注册）
+        ├── TerrainConfigCommands.cs    # 桥接命令 terrain.config_get / terrain.config_set（反射自动注册）
+        ├── TerrainModuleCommands.cs    # 桥接命令 terrain.module_*
+        ├── TerrainLayoutCommands.cs    # 桥接命令 terrain.layout_*（排布，数据存于 Resources CSV）
+        └── Resources/
+            └── TerrainLayout.csv       # 地形排布数据（默认空，仅表头；由 Unity 命令读写）
 ```
 
 > `modular-terrain/` 是地形工作流的**数据层**：组件与管理器定义地形模块规范，
-> `terrain.config_get` / `terrain.config_set` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
+> `terrain.config_*` / `terrain.module_*` / `terrain.layout_*` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
 > 后续会逐步新增 `terrain/` （地形 DSL 与 AI 生成脚本）等子目录。
 
 ---
 
-## 三、可用命令一览（共 11 条）
+## 三、可用命令一览（共 14 条）
 
 所有命令都流经 `unity-python-bridge` 命令总线（TCP + 单行 JSON，反射分发，主线程执行）。
 按提供方分为两组；详细参数与返回结构见 **[unity-python-bridge/README.md](unity-python-bridge/README.md)**。
@@ -84,7 +88,7 @@ unity-modular-terrain-ai/
 | `bridge.ping` | （无，用 `client.ping()`） | 连通性测试，返回 pong + 时间 |
 | `bridge.list_commands` | `list` / `ls` | 列出所有已注册命令 |
 
-**B. modular-terrain 插件命令（6 条）**
+**B. modular-terrain 插件命令（9 条）**
 
 | 命令 | CLI | 作用 |
 |---|---|---|
@@ -94,6 +98,9 @@ unity-modular-terrain-ai/
 | `terrain.module_size` | `module-size` / `msize` | 计算指定 id 模块尺寸 |
 | `terrain.module_snap` | `module-snap` / `msnap` | 把指定 id 模块尺寸吸附到精度整数倍 |
 | `terrain.module_set` | `module-set` / `mset` | 按 id 设置模块指定字段（可多参数） |
+| `terrain.layout_get` | `layout-get` / `lget` | 读取范围内地形排布（数据存于 Unity Resources CSV） |
+| `terrain.layout_set` | `layout-set` / `lset` | 在 (x,z) 写入单条排布（moduleId/rotation/height） |
+| `terrain.layout_clear` | `layout-clear` / `lclear` | 清空排布，回到默认空 CSV |
 
 > 插件命令的 C# 实现位于 `modular-terrain/Unity/Assets/ModularTerrain/`，由桥接层反射自动发现，无需在桥接层写任何地形相关代码。
 

@@ -53,6 +53,9 @@ COMMANDS = [
     {"name": "terrain.module_size", "description": "计算指定 id 模块的尺寸。参数: id(int)"},
     {"name": "terrain.module_snap", "description": "把指定 id 模块的尺寸吸附到精度整数倍。参数: id(int)"},
     {"name": "terrain.module_set", "description": "按 id 设置模块指定字段。参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus(float)"},
+    {"name": "terrain.layout_get", "description": "读取范围内地形排布。参数: xmin,zmin,xmax,zmax(int，均可省略；省略返回全部)"},
+    {"name": "terrain.layout_set", "description": "写入单个排布。参数: x,z(int 网格坐标), moduleId(int), rotation(0/90/180/270 俯视顺时针), height(float)"},
+    {"name": "terrain.layout_clear", "description": "清空地形排布，回到默认空 CSV。无参数"},
 ]
 
 # 离线模拟的地形模块与全局配置（仅用于无 Unity 环境联调）
@@ -61,6 +64,7 @@ MOCK_MODULES = [
     {"id": 2, "sizeX": 20, "sizeZ": 10, "heightZPlus": 2, "heightXPlus": 2, "heightZMinus": 2, "heightXMinus": 2},
 ]
 MOCK_UNITY_CONFIG = {"sizePrecision": 0.5, "moduleDirectories": ["Assets/ModularTerrain/Modules"]}
+MOCK_LAYOUT: list = []  # 离线模拟的地形排布：[{x,z,moduleId,rotation,height}, ...]
 
 
 def handle_client(client: socket.socket) -> None:
@@ -104,6 +108,12 @@ def handle_client(client: socket.socket) -> None:
                     data = mock_module_snap(args)
                 elif cmd == "terrain.module_set":
                     data = mock_module_set(args)
+                elif cmd == "terrain.layout_get":
+                    data = mock_layout_get(args)
+                elif cmd == "terrain.layout_set":
+                    data = mock_layout_set(args)
+                elif cmd == "terrain.layout_clear":
+                    data = mock_layout_clear()
                 else:
                     raise KeyError(f"未知命令: {cmd}")
                 resp = {"id": req.get("id"), "ok": True, "data": data}
@@ -281,6 +291,64 @@ def mock_module_set(args: dict) -> dict:
         "sizeX": m["sizeX"], "sizeZ": m["sizeZ"],
         "heightZPlus": m["heightZPlus"], "heightXPlus": m["heightXPlus"],
         "heightZMinus": m["heightZMinus"], "heightXMinus": m["heightXMinus"],
+    }
+
+
+def mock_layout_get(args: dict) -> dict:
+    """离线模拟 terrain.layout_get：按范围过滤排布（省略范围返回全部）。"""
+    has_range = all(k in args for k in ("xmin", "zmin", "xmax", "zmax"))
+    xmin = int(args["xmin"]) if has_range else None
+    zmin = int(args["zmin"]) if has_range else None
+    xmax = int(args["xmax"]) if has_range else None
+    zmax = int(args["zmax"]) if has_range else None
+
+    entries = []
+    for e in MOCK_LAYOUT:
+        if has_range and not (xmin <= e["x"] <= xmax and zmin <= e["z"] <= zmax):
+            continue
+        entries.append(dict(e))
+    return {
+        "count": len(entries),
+        "range": {"xmin": xmin if has_range else "all",
+                  "zmin": zmin if has_range else "all",
+                  "xmax": xmax if has_range else "all",
+                  "zmax": zmax if has_range else "all"},
+        "entries": entries,
+        "csvPath": "Assets/ModularTerrain/Resources/TerrainLayout.csv",
+    }
+
+
+def mock_layout_set(args: dict) -> dict:
+    """离线模拟 terrain.layout_set：按 (x,z) 写入/覆盖单条排布。"""
+    x = int(args["x"]); z = int(args["z"])
+    module_id = int(args["moduleId"]); rotation = int(args["rotation"]); height = float(args["height"])
+    if rotation not in (0, 90, 180, 270):
+        raise ValueError("rotation 仅允许 0/90/180/270（俯视视角顺时针）")
+
+    found = None
+    for e in MOCK_LAYOUT:
+        if e["x"] == x and e["z"] == z:
+            found = e
+            break
+    created = found is None
+    if found is None:
+        found = {"x": x, "z": z}
+        MOCK_LAYOUT.append(found)
+    found["x"] = x; found["z"] = z; found["moduleId"] = module_id
+    found["rotation"] = rotation; found["height"] = height
+    return {
+        "csvPath": "Assets/ModularTerrain/Resources/TerrainLayout.csv",
+        "created": created, "x": x, "z": z, "moduleId": module_id,
+        "rotation": rotation, "height": height, "total": len(MOCK_LAYOUT),
+    }
+
+
+def mock_layout_clear() -> dict:
+    """离线模拟 terrain.layout_clear：清空排布。"""
+    MOCK_LAYOUT.clear()
+    return {
+        "csvPath": "Assets/ModularTerrain/Resources/TerrainLayout.csv",
+        "cleared": True, "total": 0,
     }
 
 

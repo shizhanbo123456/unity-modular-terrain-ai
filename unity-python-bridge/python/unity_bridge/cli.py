@@ -293,6 +293,50 @@ def _cmd_module_set(args) -> int:
     return 0
 
 
+def _cmd_layout_get(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.layout_get(
+            xmin=args.xmin, zmin=args.zmin, xmax=args.xmax, zmax=args.zmax)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    r = data.get("range", {})
+    print(f"csv   : {data.get('csvPath')}")
+    print(f"range : x[{r.get('xmin')},{r.get('xmax')}] z[{r.get('zmin')},{r.get('zmax')}]")
+    print(f"count : {data.get('count')}")
+    for e in data.get("entries", []):
+        print(f"  (x={e['x']}, z={e['z']}) moduleId={e['moduleId']} "
+              f"rotation={e['rotation']} height={e['height']}")
+    return 0
+
+
+def _cmd_layout_set(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.layout_set(args.x, args.z, args.moduleId, args.rotation, args.height)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(f"csv     : {data.get('csvPath')}")
+    print(f"created : {data.get('created')}")
+    print(f"pos     : (x={data.get('x')}, z={data.get('z')})")
+    print(f"moduleId: {data.get('moduleId')}")
+    print(f"rotation: {data.get('rotation')}")
+    print(f"height  : {data.get('height')}")
+    print(f"total   : {data.get('total')} 条排布")
+    return 0
+
+
+def _cmd_layout_clear(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.layout_clear()
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(f"csv    : {data.get('csvPath')}")
+    print(f"cleared: {data.get('cleared')}  total={data.get('total')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="unity-bridge",
@@ -388,6 +432,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_mset.add_argument("--hXMinus", type=float, default=None, help="设置 -X 边高度")
     p_mset.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_mset.set_defaults(func=_cmd_module_set)
+
+    p_lget = sub.add_parser(
+        "layout-get", aliases=["lget"],
+        help="读取范围内地形排布（数据存于 Unity Resources CSV）")
+    p_lget.add_argument("--xmin", type=int, default=None, help="网格范围下界 X（省略=全部）")
+    p_lget.add_argument("--zmin", type=int, default=None, help="网格范围下界 Z（省略=全部）")
+    p_lget.add_argument("--xmax", type=int, default=None, help="网格范围上界 X（省略=全部）")
+    p_lget.add_argument("--zmax", type=int, default=None, help="网格范围上界 Z（省略=全部）")
+    p_lget.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lget.set_defaults(func=_cmd_layout_get)
+
+    p_lset = sub.add_parser(
+        "layout-set", aliases=["lset"],
+        help="写入单个地形排布（数据存于 Unity Resources CSV）")
+    p_lset.add_argument("--x", type=int, required=True, help="网格坐标 X")
+    p_lset.add_argument("--z", type=int, required=True, help="网格坐标 Z")
+    p_lset.add_argument("--moduleId", type=int, required=True, help="模块 id")
+    p_lset.add_argument("--rotation", type=int, required=True, choices=[0, 90, 180, 270],
+                        help="旋转角度：0/90/180/270（俯视视角顺时针）")
+    p_lset.add_argument("--height", type=float, required=True, help="高度（float）")
+    p_lset.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lset.set_defaults(func=_cmd_layout_set)
+
+    p_lclear = sub.add_parser(
+        "layout-clear", aliases=["lclear"],
+        help="清空地形排布，回到默认空 CSV")
+    p_lclear.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lclear.set_defaults(func=_cmd_layout_clear)
 
     return parser
 

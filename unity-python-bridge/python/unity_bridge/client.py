@@ -161,6 +161,38 @@ class UnityClient:
         """
         return self.call("terrain.module_set", id=module_id, **fields)
 
+    def layout_get(self, xmin=None, zmin=None, xmax=None, zmax=None) -> dict:
+        """读取地形排布（命令 terrain.layout_get）。
+
+        数据全部存储在 Unity 工程的 Resources CSV（Python 不直接接触文件）。
+        xmin/zmin/xmax/zmax 为网格范围；任意省略则返回全部排布。
+        """
+        args = {}
+        if xmin is not None:
+            args["xmin"] = xmin
+        if zmin is not None:
+            args["zmin"] = zmin
+        if xmax is not None:
+            args["xmax"] = xmax
+        if zmax is not None:
+            args["zmax"] = zmax
+        return self.call("terrain.layout_get", **args)
+
+    def layout_set(self, x: int, z: int, module_id: int, rotation: int, height: float) -> dict:
+        """写入单个地形排布（命令 terrain.layout_set）。
+
+        数据全部存储在 Unity 工程的 Resources CSV。旋转 rotation 仅允许 0/90/180/270
+        （俯视视角顺时针），由 Unity 侧校验。
+        """
+        return self.call(
+            "terrain.layout_set",
+            x=x, z=z, moduleId=module_id, rotation=rotation, height=height,
+        )
+
+    def layout_clear(self) -> dict:
+        """清空地形排布，回到默认空 CSV（命令 terrain.layout_clear）。"""
+        return self.call("terrain.layout_clear")
+
     # ---- 内部 ----
 
     def _ensure_connected(self) -> None:

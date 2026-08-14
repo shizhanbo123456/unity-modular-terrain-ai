@@ -140,8 +140,47 @@ python -m unity_bridge module-set --id 1 --sizeX 8 --sizeZ 4 --hZPlus 2 --hXPlus
 
 > 这些命令改的是模块预制体资源本身（非场景实例），修改经 `EditorUtility.SetDirty` + `AssetDatabase.SaveAssets` 持久化。
 
+---
+
+## 排布（布局）命令（terrain.layout_*）
+
+排布描述「哪些模块放在哪些网格坐标、各自朝向与高度」。与全局配置一样，**排布数据全部存储在
+Unity 工程的 Resources CSV 中**，Python 侧只通过命令读写、绝不直接接触文件：
+
+- 默认文件：`Assets/ModularTerrain/Resources/TerrainLayout.csv`（仓库内已提供，默认空，仅含表头 `x,z,moduleId,rotation,height`）。
+- 每条记录字段：`x, z`（网格坐标，int）+ `moduleId, rotation, height`。
+
+| 命令 | CLI | 作用 | 关键参数 |
+|---|---|---|---|
+| `terrain.layout_get` | `layout-get`(`lget`) | 读取 `[xmin,zmin,xmax,zmax]` 范围内的排布；四参数均可省略（省略返回全部） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
+| `terrain.layout_set` | `layout-set`(`lset`) | 在 `(x,z)` 写入单条排布（已存在则覆盖） | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
+| `terrain.layout_clear` | `layout-clear`(`lclear`) | 清空排布，回到默认空 CSV（仅保留表头） | 无 |
+
+**约束**：
+- `rotation` 仅允许 `0 / 90 / 180 / 270`，表示**俯视视角下顺时针旋转**的角度（由后续实例化命令据此设置模块朝向）。
+- `(x, z)` 为网格坐标键；`layout_set` 对同一坐标写入会覆盖旧记录。
+
+Python 侧用法（`unity-python-bridge/python` 下）：
+
+```bash
+# 在网格 (2,3) 放置模块 id=1：朝向 90°（俯视顺时针）、高度 0.5
+python -m unity_bridge layout-set --x 2 --z 3 --moduleId 1 --rotation 90 --height 0.5
+
+# 读取 x∈[0,5], z∈[0,5] 范围内的排布
+python -m unity_bridge layout-get --xmin 0 --zmin 0 --xmax 5 --zmax 5
+
+# 读取全部排布（省略范围参数）
+python -m unity_bridge layout-get
+
+# 清空排布（回到默认空 CSV）
+python -m unity_bridge layout-clear
+```
+
+---
+
 ## 与桥接工具的关系
 
 `../unity-python-bridge/` 提供「Python 命令行操控 Unity Editor」的能力；本模块是地形工作流的
-**数据层**。二者已通过 `terrain.sync_config` 桥接命令接线——该命令定义在 `ModularTerrain` 命名空间下，
-由桥接层反射扫描所有程序集自动发现（无需在桥接层写任何地形相关代码）。
+**数据层**。二者通过 `terrain.config_*` / `terrain.module_*` / `terrain.layout_*` 桥接命令接线——
+这些命令定义在 `ModularTerrain` 命名空间下，由桥接层反射扫描所有程序集自动发现
+（无需在桥接层写任何地形相关代码）。

@@ -52,7 +52,7 @@
 ## 命令总览（所有流经命令总线的命令）
 
 > 本桥接层是**命令总线**：所有命令（无论来自本工具的原生命令，还是来自 `modular-terrain` 等挂载在总线上的「插件」命令）都经 `BridgeServer` 接收、`BridgeDispatcher` 反射分发、主线程执行。
-> 当前共 **11 条命令**：原生命令 5 条 + modular-terrain 插件命令 6 条。下方按提供方分组编目，新增命令也在此登记。
+> 当前共 **14 条命令**：原生命令 5 条 + modular-terrain 插件命令 9 条。下方按提供方分组编目，新增命令也在此登记。
 
 ### A. 桥接层原生命令（5 条）
 
@@ -64,7 +64,7 @@
 | `bridge.ping` | 系统 | 连通性测试，返回 `pong` + 服务器时间 | 无专用子命令（`client.ping()` / `client.call("bridge.ping")` / 原始 TCP） | 无 |
 | `bridge.list_commands` | 系统 | 列出所有已注册命令（含插件命令） | `list`（`ls`） | 无 |
 
-### B. modular-terrain 插件命令（5 条）
+### B. modular-terrain 插件命令（9 条）
 
 > 这些命令由地形模块提供，命名空间 `ModularTerrain`，由桥接层反射扫描所有程序集自动发现，**同样流经本命令总线**；详细参数与返回结构见 **[modular-terrain/README.md](../modular-terrain/README.md)**。
 
@@ -76,6 +76,9 @@
 | `terrain.module_size` | 模块 | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（`msize`） | `id`(int, 必填) |
 | `terrain.module_snap` | 模块 | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（`msnap`） | `id`(int, 必填) |
 | `terrain.module_set` | 模块 | 按 id 设置模块指定字段（仅设置传入的参数，可多参数同时设置） | `module-set`（`mset`） | `id`(int, 必填)；`sizeX`/`length`、`sizeZ`/`width`、`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选) |
+| `terrain.layout_get` | 排布 | 读取 `[xmin,zmin,xmax,zmax]` 范围内地形排布（数据存于 Unity Resources CSV，四参数均可省略，省略返回全部） | `layout-get`（`lget`） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
+| `terrain.layout_set` | 排布 | 在 `(x,z)` 处写入单条排布（存在则覆盖）：`moduleId`、`rotation`(0/90/180/270 俯视顺时针)、`height`(float) | `layout-set`（`lset`） | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
+| `terrain.layout_clear` | 排布 | 清空地形排布，回到默认空 CSV（仅保留表头） | `layout-clear`（`lclear`） | 无 |
 
 **参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，地形相关命令见 **[modular-terrain/README.md](../modular-terrain/README.md)**。
 新增任意命令的方式见「五、如何扩展新命令」——只需写一个带 `[BridgeCommand]` 的静态方法，无需改动总线。
