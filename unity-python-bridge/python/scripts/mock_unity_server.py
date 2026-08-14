@@ -42,6 +42,7 @@ COMMANDS = [
     {"name": "bridge.ping", "description": "连通性测试，成功返回 pong 与服务器时间"},
     {"name": "bridge.list_commands", "description": "列出所有已通过反射注册的命令"},
     {"name": "scene.tree", "description": "以树状结构返回当前场景中的物体层级。参数: components(bool)"},
+    {"name": "mesh.bounds", "description": "计算 Assets 中网格/模型/预制体的轴对齐包围盒。参数: path(string)"},
 ]
 
 
@@ -69,6 +70,8 @@ def handle_client(client: socket.socket) -> None:
                 if not args.get("components"):
                     for root in data["roots"]:
                         strip_components(root)
+            elif cmd == "mesh.bounds":
+                data = mock_mesh_bounds(args.get("path", ""))
             else:
                 data = None
 
@@ -80,6 +83,27 @@ def strip_components(node) -> None:
     node.pop("components", None)
     for child in node.get("children", []):
         strip_components(child)
+
+
+def mock_mesh_bounds(path: str) -> dict:
+    """离线模拟 mesh.bounds：返回与示例一致的包围盒，并回显传入路径。
+
+    真实计算由 Unity 侧 AssetDatabase + mesh.bounds / renderer.bounds 完成；
+    此处仅用于在无 Unity 环境时验证 Python 客户端与协议。
+    """
+    resolved = path if path.startswith("Assets/") else "Assets/" + path.lstrip("/")
+    ext = resolved.lower().rsplit(".", 1)[-1] if "." in resolved else ""
+    type_name = "prefab" if ext == "prefab" else ("mesh" if ext == "mesh" else "model")
+    return {
+        "path": path,
+        "resolvedPath": resolved,
+        "type": type_name,
+        "min": {"x": -2, "y": -0.5, "z": 1},
+        "max": {"x": 6, "y": 2, "z": 6},
+        "center": {"x": 2, "y": 0.75, "z": 3.5},
+        "size": {"x": 8, "y": 2.5, "z": 5},
+        "format": "x:-2~6, y:-0.5~2, z:1~6",
+    }
 
 
 def main() -> None:

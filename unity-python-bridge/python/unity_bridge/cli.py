@@ -5,6 +5,7 @@
     python -m unity_bridge tree --components     # 同时显示组件类型
     python -m unity_bridge tree --json           # 输出原始 JSON
     python -m unity_bridge list                  # 列出 Unity 侧所有可用命令
+    python -m unity_bridge mesh-bounds Assets/.../Rock.fbx   # 计算网格/模型/预制体包围盒
 """
 
 from __future__ import annotations
@@ -77,6 +78,24 @@ def _cmd_list(args) -> int:
     return 0
 
 
+def _cmd_mesh_bounds(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.mesh_bounds(args.path)
+
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"path  : {data.get('resolvedPath')}")
+    print(f"type  : {data.get('type')}")
+    print(f"bounds: {data.get('format')}")
+    mn, mx, sz = data.get("min", {}), data.get("max", {}), data.get("size", {})
+    print(f"  min : ({mn.get('x')}, {mn.get('y')}, {mn.get('z')})")
+    print(f"  max : ({mx.get('x')}, {mx.get('y')}, {mx.get('z')})")
+    print(f"  size: ({sz.get('x')}, {sz.get('y')}, {sz.get('z')})")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="unity-bridge",
@@ -95,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_list = sub.add_parser("list", aliases=["ls"], help="列出 Unity 侧所有已注册的命令")
     p_list.set_defaults(func=_cmd_list)
+
+    p_bounds = sub.add_parser(
+        "mesh-bounds", aliases=["bounds"],
+        help="计算 Assets 中网格/模型/预制体的轴对齐包围盒")
+    p_bounds.add_argument("path", help="目标在 Assets 中的相对路径（.mesh / 模型文件 / .prefab）")
+    p_bounds.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_bounds.set_defaults(func=_cmd_mesh_bounds)
 
     return parser
 

@@ -114,6 +114,12 @@ python -m unity_bridge tree --json
 # 查看 Unity 侧所有可用命令
 python -m unity_bridge list
 
+# 计算 Assets 中网格/模型/预制体的轴对齐包围盒
+python -m unity_bridge mesh-bounds Assets/Models/Rock.fbx
+
+# 预制体同样支持；bounds 为 mesh-bounds 的别名，--json 输出原始数据
+python -m unity_bridge bounds Assets/Prefabs/Tree.prefab --json
+
 # 自定义端口
 python -m unity_bridge tree --port 21928
 ```
@@ -143,6 +149,54 @@ Player  [Transform, CharacterController, PlayerController]
 └── Head  [Transform, SkinnedMeshRenderer]
     └── Hat (inactive)  [Transform]
 ```
+
+---
+
+## 四-A、mesh.bounds 命令（计算包围盒）
+
+计算 Assets 中**网格 / 模型 / 预制体**的轴对齐包围盒（AABB）。C# 侧使用
+`AssetDatabase` 加载资源、`mesh.bounds` / `renderer.bounds` 计算，结果返回三个轴
+的坐标范围，形如 `x:-2~6, y:-0.5~2, z:1~6`。
+
+**参数**：`path`（string）—— 目标在 Assets 中的相对路径。可带或不带 `Assets/` 前缀；
+支持 `.mesh`（网格）、`.fbx`/`.obj`/`.blend` 等（模型）、`.prefab`（预制体）。
+
+**多网格处理**：若 fbx 模型或 prefab 内含多个网格，命令会实例化到原点（根变换重置为
+identity，取几何固有范围），合并其下所有 `MeshRenderer` 与 `SkinnedMeshRenderer` 的包围盒，
+返回能包围所有网格的合并包围盒。
+
+**返回结构**：
+
+```json
+{
+  "path": "Assets/Models/Rock.fbx",
+  "resolvedPath": "Assets/Models/Rock.fbx",
+  "type": "model",
+  "min":  { "x": -2, "y": -0.5, "z": 1 },
+  "max":  { "x": 6,  "y": 2,   "z": 6 },
+  "center": { "x": 2, "y": 0.75, "z": 3.5 },
+  "size": { "x": 8, "y": 2.5, "z": 5 },
+  "format": "x:-2~6, y:-0.5~2, z:1~6"
+}
+```
+
+**命令行**：
+
+```bash
+python -m unity_bridge mesh-bounds Assets/Models/Rock.fbx
+# 文本输出：
+#   path  : Assets/Models/Rock.fbx
+#   type  : model
+#   bounds: x:-2~6, y:-0.5~2, z:1~6
+#     min : (-2, -0.5, 1)
+#     max : (6, 2, 6)
+#     size: (8, 2.5, 5)
+
+python -m unity_bridge bounds Assets/Prefabs/Tree.prefab --json   # bounds 为 mesh-bounds 的别名
+```
+
+> 提示：`format` 字段即 `x:min~max, y:..., z:...` 可读格式；`min/max/center/size`
+> 为机器可解析的数值，方便后续地形拼接计算。
 
 ---
 

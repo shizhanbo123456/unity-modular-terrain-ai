@@ -97,6 +97,9 @@ class UnityClient:
     def scene_tree(self, components: bool = False) -> dict:
         return self.call("scene.tree", components=components)
 
+    def mesh_bounds(self, path: str) -> dict:
+        return self.call("mesh.bounds", path=path)
+
     # ---- 内部 ----
 
     def _ensure_connected(self) -> None:
