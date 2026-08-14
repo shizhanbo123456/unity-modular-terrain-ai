@@ -34,7 +34,8 @@ namespace ModularTerrain
         public List<string> moduleDirectories = new List<string>();
 
         [Tooltip("地形模块的存储：由 LoadModules() 根据 moduleDirectories 扫描资源目录加载；" +
-                 "也可由 CollectModules() 收集场景中的实例。")]
+                 "也可由 CollectModules() 收集场景中的实例。两者收集后都会自动为 id==0 的模块" +
+                 "分配正数 ID（AssignIds：已分配最大值 +1 递增）。")]
         public List<ModularTerrainModule> modules = new List<ModularTerrainModule>();
 
         /// <summary>
@@ -70,6 +71,33 @@ namespace ModularTerrain
                         modules.Add(m);
                 }
             }
+
+            AssignIds();
+        }
+
+        /// <summary>
+        /// 为 <see cref="modules"/> 中 id==0 的模块自动分配正数 ID：
+        /// 从「已分配 ID 的最大值」+1 起依次递增（多个未分配依次 +1、+2、+3…）。
+        /// 仅编辑器可用（需持久化到对应 prefab 资源）。
+        /// </summary>
+        public void AssignIds()
+        {
+            int maxId = 0;
+            foreach (var m in modules)
+                if (m != null && m.id > maxId) maxId = m.id;
+
+            bool changed = false;
+            foreach (var m in modules)
+            {
+                if (m != null && m.id == 0)
+                {
+                    maxId++;
+                    m.id = maxId;
+                    EditorUtility.SetDirty(m);
+                    changed = true;
+                }
+            }
+            if (changed) AssetDatabase.SaveAssets();
         }
 #endif
 
@@ -81,6 +109,20 @@ namespace ModularTerrain
         {
             modules = new List<ModularTerrainModule>(
                 FindObjectsOfType<ModularTerrainModule>(true));
+#if UNITY_EDITOR
+            AssignIds();
+#endif
+        }
+
+        /// <summary>
+        /// 按 ID 在 <see cref="modules"/> 中查找模块组件（无则返回 null）。
+        /// 运行时可用，供命令按 id 定位目标模块。
+        /// </summary>
+        public ModularTerrainModule GetModuleById(int targetId)
+        {
+            foreach (var m in modules)
+                if (m != null && m.id == targetId) return m;
+            return null;
         }
 
         /// <summary>

@@ -126,16 +126,40 @@ class UnityClient:
         return self.call("prefab.screenshot", **args)
 
     def sync_terrain_config(self, size_precision: float, module_directories) -> dict:
-        """将 Python 端地形配置同步到 Unity 管理器预制体。
+        """将 Python 端地形配置写入 Unity 管理器预制体（action=write）。
 
         size_precision 为最小尺寸精度（正数）；module_directories 为模块目录列表
         （Assets 相对路径字符串）。C# 侧会查找/创建 Assets 根目录下的管理器预制体并写入。
         """
         return self.call(
             "terrain.sync_config",
+            action="write",
             sizePrecision=size_precision,
             moduleDirectories=list(module_directories),
         )
+
+    def get_terrain_config(self) -> dict:
+        """读取 Unity 侧全局模块配置（action=read），由 Unity 返回其实际值。"""
+        return self.call("terrain.sync_config", action="read")
+
+    def module_list(self) -> dict:
+        """列出所有已加载地形模块的信息。"""
+        return self.call("terrain.module_list")
+
+    def module_size(self, module_id: int) -> dict:
+        """计算指定 id 模块的尺寸。"""
+        return self.call("terrain.module_size", id=module_id)
+
+    def module_snap(self, module_id: int) -> dict:
+        """把指定 id 模块的尺寸吸附到精度整数倍。"""
+        return self.call("terrain.module_snap", id=module_id)
+
+    def module_set(self, module_id: int, **fields) -> dict:
+        """按 id 设置模块指定字段（仅传入的字段会被设置，可同时设置多个）。
+
+        fields 可选键：sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus。
+        """
+        return self.call("terrain.module_set", id=module_id, **fields)
 
     # ---- 内部 ----
 

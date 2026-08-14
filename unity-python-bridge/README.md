@@ -60,9 +60,13 @@
 | `prefab.screenshot` | 资源查询 | 桥接层（原生） | 隔离复制 prefab 到 `(9999,9999,9999)` + 相机环绕 `LookAt` 渲染存 PNG（支持正交/透视、`fov`、`bg`、补光） | `screenshot`（别名 `shot`） | `path`、`output`(.png)、`offset`("x,y,z")、`orthographic`、`fov`、`width`、`height`、`bg`、`light` |
 | `bridge.ping` | 系统 | 桥接层（原生） | 连通性测试，返回 `pong` + 服务器时间 | 无专用子命令（用 `client.ping()` 或 `client.call("bridge.ping")` / 原始 TCP） | 无 |
 | `bridge.list_commands` | 系统 | 桥接层（原生） | 列出所有已注册命令（含插件命令） | `list`（别名 `ls`） | 无 |
-| `terrain.sync_config` | 地形 / 领域 | modular-terrain（总线插件） | 将 Python 端地形配置同步到管理器预制体（固定路径 `Assets/ModularTerrainManager.prefab`，不存在则创建、在别处则移回）；校验 `sizePrecision > 0` | `terrain-sync`（别名 `tsync`） | `sizePrecision`(number > 0)、`moduleDirectories`(array\<string\>) |
+| `terrain.sync_config` | 地形 / 全局配置 | modular-terrain（总线插件） | 全局模块配置**读写**：`action="write"` 将 sizePrecision+moduleDirectories 写入管理器预制体；`action="read"` 由 Unity 返回其当前配置（经 Unity API，不解析 prefab 文件） | `terrain-sync`（别名 `tsync`；`--read` 进入读取模式） | 写：`sizePrecision`(>0)、`moduleDirectories`(array\<string\>)；读：无 |
+| `terrain.module_list` | 地形 / 模块 | modular-terrain（总线插件） | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | `module-list`（别名 `mlist`） | 无 |
+| `terrain.module_size` | 地形 / 模块 | modular-terrain（总线插件） | 计算指定 id 模块的尺寸（长宽 / 四边高度 / 最大高度 / 是否符合精度） | `module-size`（别名 `msize`） | `id`(int, 必填) |
+| `terrain.module_snap` | 地形 / 模块 | modular-terrain（总线插件） | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `module-snap`（别名 `msnap`） | `id`(int, 必填) |
+| `terrain.module_set` | 地形 / 模块 | modular-terrain（总线插件） | 按 id 设置模块指定字段（仅设置传入的参数，可多参数同时设置） | `module-set`（别名 `mset`） | `id`(int, 必填)、`sizeX`/`length`、`sizeZ`/`width`、`hZPlus`、`hXPlus`、`hZMinus`、`hXMinus`(float, 可选) |
 
-**参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，`terrain.sync_config` 见 **[modular-terrain/README.md](../modular-terrain/README.md)**（该命令由 terrain 模块提供，仅挂载于本总线）。
+**参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，地形相关命令（`terrain.sync_config` 及 `terrain.module_*`）见 **[modular-terrain/README.md](../modular-terrain/README.md)**（这些命令由 terrain 模块提供，仅挂载于本总线，但同样流经本命令总线）。
 新增任意命令的方式见「五、如何扩展新命令」——只需写一个带 `[BridgeCommand]` 的静态方法，无需改动总线。
 
 ---

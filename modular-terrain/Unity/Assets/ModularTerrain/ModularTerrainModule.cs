@@ -9,6 +9,7 @@ namespace ModularTerrain
     /// 模块地形组件：描述一个矩形地形模块（tile）。
     ///
     /// 参数:
+    ///   id (int) - 模块唯一标识。0 = 未分配；收集进管理器时自动分配正数。
     ///   moduleSize (Vector2) - 模块的长宽（单位：米）。
     ///        x = 长（沿世界 X 方向），y = 宽（沿世界 Z 方向）。
     ///   heightZPlus / heightXPlus / heightZMinus / heightXMinus (float)
@@ -23,6 +24,10 @@ namespace ModularTerrain
     /// </summary>
     public class ModularTerrainModule : MonoBehaviour
     {
+        [Header("模块标识")]
+        [Tooltip("模块唯一 ID。0 表示未分配；收集到管理器时会自动分配正数（已分配最大值 +1 递增）。")]
+        public int id = 0;
+
         [Tooltip("模块长宽（米）。x = 长（世界 X 方向），y = 宽（世界 Z 方向）。")]
         public Vector2 moduleSize = new Vector2(10f, 10f);
 

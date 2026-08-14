@@ -8,32 +8,46 @@ using Newtonsoft.Json.Linq;
 namespace ModularTerrain
 {
     /// <summary>
-    /// 命令 <c>terrain.sync_config</c>：
-    /// 将 Python 端的地形配置（最小尺寸精度 + 模块目录路径）同步到「管理器预制体」。
+    /// 命令 <c>terrain.sync_config</c>：全局模块配置（sizePrecision + moduleDirectories）的
+    /// 读取与写入，均经 unity-python-bridge 命令总线分发。
     ///
-    /// 管理器预制体（挂载 ModularTerrainManager）固定位于 Assets 根目录：
-    ///   <c>Assets/ModularTerrainManager.prefab</c>
-    ///   - 若不存在则创建；
-    ///   - 若在其它目录被发现，则移回该固定位置（实现「不允许移动到别的目录」约定）。
+    ///   action = "write"（默认）：将 Python 端配置写入 Unity 管理器预制体。
+    ///   action = "read"：由 Unity 通过 API 读取预制体组件的当前配置并返回（不解析 .prefab 文件），
+    ///        供 Python 端比对「Python 记录值」与「Unity 实际值」。
     ///
-    /// 参数:
-    ///   sizePrecision (number)      - 最小尺寸精度，必须 > 0
-    ///   moduleDirectories (array)   - 模块目录列表（Assets 相对路径字符串数组）
-    ///
-    /// 返回:
-    ///   { prefabPath, created, sizePrecision, moduleDirectories, moduleCount }
+    /// 管理器预制体固定位于 Assets/ModularTerrainManager.prefab（不存在则创建；在别处则移回）。
     /// </summary>
+    [BridgeCommand("terrain.sync_config",
+        "全局模块配置读写。参数: action(\"write\"|\"read\", 默认 write), sizePrecision(number>0), moduleDirectories(array<string>)")]
     public static class TerrainSyncConfigCommand
     {
-        private const string ManagerPrefabPath = "Assets/ModularTerrainManager.prefab";
-
-        // 与 unity-python-bridge 原生命令完全一致的注册方式：
-        // [BridgeCommand] 打在静态方法上，由 BridgeDispatcher 反射扫描所有程序集自动发现。
-        [BridgeCommand("terrain.sync_config",
-            "将 Python 端配置同步到管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)")]
         public static object Execute(BridgeContext ctx, JObject args)
         {
-            // 1) 校验参数
+            string action = args.Value<string>("action") ?? "write";
+
+            bool created;
+            GameObject prefab = TerrainCommandHelper.LoadOrCreateManagerPrefab(out created);
+            var manager = prefab.GetComponent<ModularTerrainManager>();
+            if (manager == null)
+            {
+                prefab.AddComponent<ModularTerrainManager>();
+                PrefabUtility.SavePrefabAsset(prefab);
+                manager = prefab.GetComponent<ModularTerrainManager>();
+            }
+
+            // ---- 读取：由 Unity 返回其当前配置 ----
+            if (action == "read")
+            {
+                return new Dictionary<string, object>
+                {
+                    ["source"] = "unity",
+                    ["sizePrecision"] = manager.sizePrecision,
+                    ["moduleDirectories"] = manager.moduleDirectories,
+                    ["moduleCount"] = manager.moduleDirectories.Count,
+                };
+            }
+
+            // ---- 写入：同时修改 Unity 预制体（Python 侧记录值由 CLI 负责写回 json） ----
             float sizePrecision = args.Value<float>("sizePrecision");
             if (sizePrecision <= 0f)
                 throw new System.ArgumentException("sizePrecision 必须为正数");
@@ -45,46 +59,6 @@ namespace ModularTerrain
             foreach (var t in dirsToken)
                 directories.Add((string)t);
 
-            // 2) 定位 / 创建 / 归位管理器预制体
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ManagerPrefabPath);
-            bool created = false;
-
-            if (prefab == null)
-            {
-                // 在其它目录找同组件预制体，移回固定位置（不允许移动到别的目录）
-                string[] guids = AssetDatabase.FindAssets("t:ModularTerrainManager");
-                if (guids.Length > 0)
-                {
-                    string stray = AssetDatabase.GUIDToAssetPath(guids[0]);
-                    if (stray != ManagerPrefabPath)
-                    {
-                        AssetDatabase.MoveAsset(stray, ManagerPrefabPath);
-                        Debug.LogWarning(
-                            $"[terrain.sync_config] 管理器预制体不在固定位置，已移回 {ManagerPrefabPath}（原位置 {stray}）");
-                    }
-                    prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ManagerPrefabPath);
-                }
-
-                if (prefab == null)
-                {
-                    var go = new GameObject("ModularTerrainManager");
-                    go.AddComponent<ModularTerrainManager>();
-                    prefab = PrefabUtility.SaveAsPrefabAsset(go, ManagerPrefabPath);
-                    Object.DestroyImmediate(go);
-                    created = true;
-                }
-            }
-
-            // 3) 确保管理器组件存在
-            var manager = prefab.GetComponent<ModularTerrainManager>();
-            if (manager == null)
-            {
-                prefab.AddComponent<ModularTerrainManager>();
-                PrefabUtility.SavePrefabAsset(prefab);
-                manager = prefab.GetComponent<ModularTerrainManager>();
-            }
-
-            // 4) 写入配置并持久化
             manager.sizePrecision = sizePrecision;
             manager.moduleDirectories = directories;
 
@@ -93,7 +67,7 @@ namespace ModularTerrain
 
             return new Dictionary<string, object>
             {
-                ["prefabPath"] = ManagerPrefabPath,
+                ["prefabPath"] = TerrainCommandHelper.ManagerPrefabPath,
                 ["created"] = created,
                 ["sizePrecision"] = sizePrecision,
                 ["moduleDirectories"] = directories,
