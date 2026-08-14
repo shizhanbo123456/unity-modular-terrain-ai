@@ -126,6 +126,7 @@ def mock_screenshot(args: dict) -> dict:
     orthographic = bool(args.get("orthographic", False))
     width = int(args.get("width", 1920))
     height = int(args.get("height", 1080))
+    light = float(args.get("light", 0.0) or 0.0)
 
     iso = {"x": 9999, "y": 9999, "z": 9999}
     cam_pos = {k: iso[k] + float(offset.get(k, 0)) for k in ("x", "y", "z")}
@@ -146,6 +147,7 @@ def mock_screenshot(args: dict) -> dict:
         "height": height,
         "cameraPosition": cam_pos,
         "lookAt": iso,
+        "fillLight": light if light > 0 else 0,
         "bytes": len(png),
     }
 

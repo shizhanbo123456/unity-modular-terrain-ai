@@ -102,11 +102,13 @@ class UnityClient:
 
     def prefab_screenshot(self, path: str, offset: dict, output: str,
                           orthographic: bool = False, fov=None,
-                          width: int = 1920, height: int = 1080, bg=None) -> dict:
+                          width: int = 1920, height: int = 1080, bg=None,
+                          light: float = 0.0) -> dict:
         """将目标预制体复制到场景隔离位置并截图保存为 PNG。
 
         offset 为相机相对预制体的位置，形如 {"x":, "y":, "z":}。
         fov / bg 为 None 时不发送，由 Unity 侧使用默认值。
+        light 为补光强度，0（默认）不补光，>0 时追加一盏与相机同向的平行光。
         """
         args = {
             "path": path,
@@ -115,6 +117,7 @@ class UnityClient:
             "orthographic": orthographic,
             "width": width,
             "height": height,
+            "light": light,
         }
         if fov is not None:
             args["fov"] = fov

@@ -228,6 +228,7 @@ python -m unity_bridge bounds Assets/Prefabs/Tree.prefab --json   # bounds 为 m
 | `width` | int | ❌ | 输出图片宽，默认 `1920` |
 | `height` | int | ❌ | 输出图片高，默认 `1080` |
 | `bg` | string | ❌ | 背景色 `"r,g,b[,a]"`（分量 0~1），默认**透明** |
+| `light` | number | ❌ | 补光强度，默认 `0`（不补光）；`>0` 时在相机就位后追加一盏**与相机朝向一致的平行光**，相机完成即销毁 |
 
 **坐标约定**：相机世界位置 = 隔离位置 `(9999,9999,9999)` + `offset`；`LookAt` 朝向隔离位置。
 因此其它场景物体位于相机背后（约 9999 单位外），不会进入画面。
@@ -264,10 +265,15 @@ python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png --offs
 # 正交相机 + 自定义视野/分辨率/背景色
 python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-8" \
     --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
+
+# 补光（>=1 为正向）：相机就位后追加一盏与相机同向的平行光，照亮相机所见正面
+python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree_lit.png --offset "3,2,5" --light 1.5
 ```
 
 > 注意：截图使用**当前激活场景的灯光**渲染。若场景没有平行光，预制体可能偏暗——
 > 请确保截图时场景具备合适照明（你的地形编辑器工作流通常已有定向光）。
+> 也可直接用 `--light <强度>` 让命令临时追加一盏与相机同向的平行光补光，`light=0`（默认）
+> 则不补光；该补光在相机渲染完成后立即销毁，不会留在场景里。
 
 ---
 
