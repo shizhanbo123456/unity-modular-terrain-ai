@@ -236,6 +236,18 @@ class UnityClient:
         """清空地形排布，回到默认空 CSV（命令 terrain.layout_clear）。"""
         return self.call("terrain.layout_clear")
 
+    def layout_load(self, x: int, z: int) -> dict:
+        """按网格坐标 (x,z) 加载/刷新单个地形块（命令 terrain.layout_load）。
+
+        会先刷新模块库、网格步进与排布，再从 CSV 读取该格排布并把对应模块实例化到
+        Unity 场景（相邻格自动贴合，因本工作流所有模块同尺寸）。返回加载结果与网格步进。
+        """
+        return self.call("terrain.layout_load", x=x, z=z)
+
+    def layout_unload(self, x: int, z: int) -> dict:
+        """卸载（销毁）网格坐标 (x,z) 处已实例化的地形块（命令 terrain.layout_unload）。"""
+        return self.call("terrain.layout_unload", x=x, z=z)
+
     # ---- 内部 ----
 
     def _ensure_connected(self) -> None:

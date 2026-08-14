@@ -55,7 +55,7 @@ modular-terrain/
 | `moduleDirectories` | `List<string>` | 模块（prefab / 资源）所在目录列表（Assets 相对路径） |
 | `modules` | `List<ModularTerrainModule>` | **地形模块的存储容器**：由 `LoadModules()` 根据 `moduleDirectories` 扫描资源目录、加载所有含 `ModularTerrainModule` 的资源并写入；也可用 `CollectModules()` 收集场景实例 |
 | `layout` | `Dictionary<Vector2Int, TerrainLayoutCell>` | **地形排布全量缓存**：`Awake` 时从 CSV 全量读取，键为网格坐标 `Vector2Int(x,z)`，值为 `TerrainLayoutCell`（含 `moduleId` / `rotation` / `height`）。供 `LoadTerrainModule` 按坐标实例化 |
-| `gridStepX` / `gridStepZ` | `float` | 网格坐标到世界位置的步长（米）。`cell(x,z)` 的底面中心世界坐标 = 管理器位置 + `(x*gridStepX, height, z*gridStepZ)` |
+| `gridStepX` / `gridStepZ` | `float` | 网格坐标到世界位置的步长（米）。`cell(x,z)` 的底面中心世界坐标 = 管理器位置 + `(x*gridStepX, height, z*gridStepZ)`。**本工作流约定所有模块同尺寸**，因此 `Awake` 与每次 `terrain.layout_load` 都会调用 `RecalcGridStep()`，把它自动同步为第一个模块的尺寸（`gridStepX = 模块长 moduleSize.x`，`gridStepZ = 模块宽 moduleSize.y`），确保相邻格在世界中恰好贴合。模块库为空时保持当前值 |
 
 辅助方法：
 - `LoadModules()`（**编辑器内**）：按 `moduleDirectories` 用 `AssetDatabase` 扫描并加载所有含 `ModularTerrainModule` 的 prefab/资源，写入 `modules`；无效目录跳过并告警，重复资源自动去重；收集后自动调用 `AssignIds()`
@@ -91,6 +91,19 @@ modular-terrain/
 
 > 实例化需要 `modules` 列表中的模块引用（编辑器内 `LoadModules()` 已填充并序列化进管理器预制体）。
 > 要把地形放进场景，需把 `ModularTerrainManager` 预制体实例化进场景，再用上述 API 或编辑器菜单加载。
+
+### 通过桥接命令行加载/卸载单个地形块
+
+除了编辑器菜单「加载全部排布模块 / 卸载全部排布模块」，现在**也可以通过桥接命令行只刷新单个格子**，
+无需重载全部排布（适合迭代单个 tile、或在 AI 批量写入后逐步呈现）：
+
+- `terrain.layout_load`（CLI `layout-load` / `lload`）：按网格坐标 `(x,z)` 加载/刷新**单个**地形块。
+  命令会先刷新模块库（`LoadModules`）、把 `gridStep` 同步为模块尺寸、刷新排布（捕获最新 `layout_set` 写入），
+  再从 CSV 读取该格排布并实例化对应模块到场景；若该坐标已有实例则先卸载再重载。
+- `terrain.layout_unload`（CLI `layout-unload` / `lunload`）：销毁 `(x,z)` 处已实例化的地形块（无实例则忽略）。
+
+这两个命令操作的是**场景中的管理器实例**（命令内用 `Object.FindObjectOfType` 查找，找不到则依据
+`Assets/ModularTerrainManager.prefab` 实例化一个），因此调用前请确保管理器预制体已在场景中（或由命令自动创建）。
 
 ## 全局配置（terrain.config_get / terrain.config_set）
 
@@ -189,6 +202,8 @@ Unity 工程的 Resources CSV 中**，Python 侧只通过命令读写、绝不�
 | `terrain.layout_get` | `layout-get`(`lget`) | 读取 `[xmin,zmin,xmax,zmax]` 范围内的排布；四参数均可省略（省略返回全部） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
 | `terrain.layout_set` | `layout-set`(`lset`) | 在 `(x,z)` 写入单条排布（已存在则覆盖）；**写入前 Python 侧强制校验相邻高度无缝拼接**，存在高度突变则拒绝 | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
 | `terrain.layout_clear` | `layout-clear`(`lclear`) | 清空排布，回到默认空 CSV（仅保留表头） | 无 |
+| `terrain.layout_load` | `layout-load`(`lload`) | 按 `(x,z)` 加载/刷新**单个**地形块到场景：刷新模块库与排布后，实例化该格对应模块（相邻格自动贴合，因所有模块同尺寸）；该坐标已有实例则先卸再载 | `x`/`z`(int) |
+| `terrain.layout_unload` | `layout-unload`(`lunload`) | 销毁 `(x,z)` 处已实例化的地形块（无实例则忽略） | `x`/`z`(int) |
 | （Python 端，非 Unity 命令） | `layout-recommend`(`lrec`) | 推荐在 `(x,z)` 可无缝拼接的模块：输出每个可行模块的 `id`、描述、可用旋转与所需高度；不修改任何数据 | `--x`/`--z`(int, 必填)、`--height`(float, 可选，限定所需高度) |
 
 **约束**：
@@ -258,6 +273,12 @@ python -m unity_bridge layout-get
 
 # 清空排布（回到默认空 CSV）
 python -m unity_bridge layout-clear
+
+# 把网格 (2,3) 的地形块实例化/刷新到 Unity 场景（需先 layout-set 写好该格）
+python -m unity_bridge layout-load --x 2 --z 3
+
+# 销毁 (2,3) 处已实例化的地形块
+python -m unity_bridge layout-unload --x 2 --z 3
 ```
 
 > 校验/推荐逻辑全部在 Python 侧（`terrain_checks.py`），与 Unity 命令总线解耦；

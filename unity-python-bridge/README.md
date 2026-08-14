@@ -79,6 +79,8 @@
 | `terrain.layout_get` | 排布 | 读取 `[xmin,zmin,xmax,zmax]` 范围内地形排布（数据存于 Unity Resources CSV，四参数均可省略，省略返回全部） | `layout-get`（`lget`） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
 | `terrain.layout_set` | 排布 | 在 `(x,z)` 处写入单条排布（存在则覆盖）：`moduleId`、`rotation`(0/90/180/270 俯视顺时针)、`height`(float) | `layout-set`（`lset`） | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
 | `terrain.layout_clear` | 排布 | 清空地形排布，回到默认空 CSV（仅保留表头） | `layout-clear`（`lclear`） | 无 |
+| `terrain.layout_load` | 排布 | 按 `(x,z)` 加载/刷新**单个**地形块到场景：刷新模块库与排布后实例化该格对应模块（相邻格自动贴合，因所有模块同尺寸）；已有实例则先卸再载 | `layout-load`（`lload`） | `x`/`z`(int) |
+| `terrain.layout_unload` | 排布 | 销毁 `(x,z)` 处已实例化的地形块（无实例则忽略） | `layout-unload`（`lunload`） | `x`/`z`(int) |
 
 **参数与返回结构**详见各命令专节：`mesh.bounds` 见「四-A」，`prefab.screenshot` 见「四-B」，地形相关命令见 **[modular-terrain/README.md](../modular-terrain/README.md)**。
 新增任意命令的方式见「五、如何扩展新命令」——只需写一个带 `[BridgeCommand]` 的静态方法，无需改动总线。

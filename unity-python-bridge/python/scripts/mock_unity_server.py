@@ -56,6 +56,8 @@ COMMANDS = [
     {"name": "terrain.layout_get", "description": "读取范围内地形排布。参数: xmin,zmin,xmax,zmax(int，均可省略；省略返回全部)"},
     {"name": "terrain.layout_set", "description": "写入单个排布（Python 侧写入前强制校验相邻高度无缝拼接）。参数: x,z(int 网格坐标), moduleId(int), rotation(0/90/180/270 俯视顺时针), height(float)"},
     {"name": "terrain.layout_clear", "description": "清空地形排布，回到默认空 CSV。无参数"},
+    {"name": "terrain.layout_load", "description": "按 (x,z) 加载/刷新单个地形块到场景（刷新模块库与排布后实例化对应模块）。参数: x,z(int 网格坐标)"},
+    {"name": "terrain.layout_unload", "description": "卸载（销毁）(x,z) 处已实例化的地形块。参数: x,z(int 网格坐标)"},
 ]
 
 # 离线模拟的地形模块与全局配置（仅用于无 Unity 环境联调）
@@ -118,6 +120,10 @@ def handle_client(client: socket.socket) -> None:
                     data = mock_layout_set(args)
                 elif cmd == "terrain.layout_clear":
                     data = mock_layout_clear()
+                elif cmd == "terrain.layout_load":
+                    data = mock_layout_load(args)
+                elif cmd == "terrain.layout_unload":
+                    data = mock_layout_unload(args)
                 else:
                     raise KeyError(f"未知命令: {cmd}")
                 resp = {"id": req.get("id"), "ok": True, "data": data}
@@ -357,6 +363,29 @@ def mock_layout_clear() -> dict:
     return {
         "csvPath": "Assets/ModularTerrain/Resources/TerrainLayout.csv",
         "cleared": True, "total": 0,
+    }
+
+
+def mock_layout_load(args: dict) -> dict:
+    """离线模拟 terrain.layout_load：回显加载请求（真实实例化由 Unity 场景完成）。"""
+    x = int(args["x"]); z = int(args["z"])
+    found = next((e for e in MOCK_LAYOUT if e["x"] == x and e["z"] == z), None)
+    return {
+        "x": x, "z": z,
+        "loaded": found is not None,
+        "moduleId": found["moduleId"] if found else -1,
+        "gridStepX": 10, "gridStepZ": 10,
+        "note": "场景实例化是 Unity-only 行为；mock 仅回显参数，不创建 GameObject",
+    }
+
+
+def mock_layout_unload(args: dict) -> dict:
+    """离线模拟 terrain.layout_unload：回显卸载请求。"""
+    x = int(args["x"]); z = int(args["z"])
+    return {
+        "x": x, "z": z,
+        "unloaded": True,
+        "note": "场景销毁是 Unity-only 行为；mock 仅回显参数",
     }
 
 

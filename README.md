@@ -31,7 +31,7 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 
 > **底座已就绪**：`unity-python-bridge/` 已实现 TCP + 单行 JSON 协议、反射自动注册命令、
-> 主线程安全执行，当前共 **14 条命令**（桥接层原生 5 条 + modular-terrain 插件 9 条），详见下方「三、可用命令一览」。
+> 主线程安全执行，当前共 **16 条命令**（桥接层原生 5 条 + modular-terrain 插件 11 条），详见下方「三、可用命令一览」。
 > 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器、排布缓存与各 `terrain.*` 命令（数据层 + 接线）。
 > "地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
 
@@ -78,7 +78,7 @@ unity-modular-terrain-ai/
 
 ---
 
-## 三、可用命令一览（共 14 条）
+## 三、可用命令一览（共 16 条）
 
 所有命令都流经 `unity-python-bridge` 命令总线（TCP + 单行 JSON，反射分发，主线程执行）。
 按提供方分为两组；详细参数与返回结构见 **[unity-python-bridge/README.md](unity-python-bridge/README.md)**。
@@ -93,7 +93,7 @@ unity-modular-terrain-ai/
 | `bridge.ping` | （无，用 `client.ping()`） | 连通性测试，返回 pong + 时间 |
 | `bridge.list_commands` | `list` / `ls` | 列出所有已注册命令 |
 
-**B. modular-terrain 插件命令（9 条）**
+**B. modular-terrain 插件命令（11 条）**
 
 | 命令 | CLI | 作用 |
 |---|---|---|
@@ -106,6 +106,8 @@ unity-modular-terrain-ai/
 | `terrain.layout_get` | `layout-get` / `lget` | 读取范围内地形排布（数据存于 Unity Resources CSV） |
 | `terrain.layout_set` | `layout-set` / `lset` | 在 (x,z) 写入单条排布（moduleId/rotation/height） |
 | `terrain.layout_clear` | `layout-clear` / `lclear` | 清空排布，回到默认空 CSV |
+| `terrain.layout_load` | `layout-load` / `lload` | 按 (x,z) 加载/刷新单个地形块到场景（相邻格自动贴合，因所有模块同尺寸） |
+| `terrain.layout_unload` | `layout-unload` / `lunload` | 销毁 (x,z) 处已实例化的地形块 |
 
 > 插件命令的 C# 实现位于 `modular-terrain/Unity/Assets/ModularTerrain/`，由桥接层反射自动发现，无需在桥接层写任何地形相关代码。
 

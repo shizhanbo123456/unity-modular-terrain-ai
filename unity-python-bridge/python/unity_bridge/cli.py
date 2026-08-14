@@ -343,6 +343,31 @@ def _cmd_layout_clear(args) -> int:
     return 0
 
 
+def _cmd_layout_load(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.layout_load(args.x, args.z)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(f"pos      : (x={data.get('x')}, z={data.get('z')})")
+    print(f"loaded   : {data.get('loaded')}")
+    print(f"moduleId : {data.get('moduleId')}")
+    print(f"gridStep : x={data.get('gridStepX')}  z={data.get('gridStepZ')}  "
+          f"(= 模块尺寸，因所有模块同尺寸)")
+    return 0
+
+
+def _cmd_layout_unload(args) -> int:
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.layout_unload(args.x, args.z)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(f"pos      : (x={data.get('x')}, z={data.get('z')})")
+    print(f"unloaded : {data.get('unloaded')}")
+    return 0
+
+
 def _cmd_layout_recommend(args) -> int:
     """推荐在 (x,z) 处可无缝拼接的模块（纯 Python 几何计算，不修改任何数据）。"""
     with UnityClient(args.host, args.port, args.timeout) as client:
@@ -490,6 +515,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="清空地形排布，回到默认空 CSV")
     p_lclear.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_lclear.set_defaults(func=_cmd_layout_clear)
+
+    p_lload = sub.add_parser(
+        "layout-load", aliases=["lload"],
+        help="按 (x,z) 加载/刷新单个地形块到 Unity 场景（需先 layout-set 写好该格）")
+    p_lload.add_argument("--x", type=int, required=True, help="网格坐标 X")
+    p_lload.add_argument("--z", type=int, required=True, help="网格坐标 Z")
+    p_lload.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lload.set_defaults(func=_cmd_layout_load)
+
+    p_lunload = sub.add_parser(
+        "layout-unload", aliases=["lunload"],
+        help="卸载（销毁）(x,z) 处已实例化的地形块")
+    p_lunload.add_argument("--x", type=int, required=True, help="网格坐标 X")
+    p_lunload.add_argument("--z", type=int, required=True, help="网格坐标 Z")
+    p_lunload.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lunload.set_defaults(func=_cmd_layout_unload)
 
     p_lrec = sub.add_parser(
         "layout-recommend", aliases=["lrec"],

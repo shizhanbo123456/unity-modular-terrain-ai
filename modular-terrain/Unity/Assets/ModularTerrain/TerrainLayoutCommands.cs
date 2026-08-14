@@ -15,6 +15,9 @@ namespace ModularTerrain
     ///   terrain.layout_get   - 读取 [xmin,zmin,xmax,zmax] 范围内的排布（四参数均可省略，省略返回全部）。
     ///   terrain.layout_set   - 在 (x,z) 处写入单条排布：moduleId, rotation(0/90/180/270), height(float)。
     ///   terrain.layout_clear - 清空排布，回到默认空文件（仅保留表头）。
+    ///   terrain.layout_load  - 按 (x,z) 加载/刷新单个地形块：刷新模块库与排布后，从 CSV 读取该格排布，
+    ///                          实例化对应模块预制体到场景（相邻格自动贴合，因本工作流所有模块同尺寸）。
+    ///   terrain.layout_unload - 卸载（销毁）(x,z) 处已实例化的地形模块；该坐标无实例则忽略。
     ///
     /// 每条排布记录字段：(x, z) 网格坐标 + (moduleId, rotation, height)。
     /// rotation 仅允许 0/90/180/270，表示**俯视视角下顺时针旋转**的角度（由后续实例化命令据此设置朝向）。
@@ -134,6 +137,68 @@ namespace ModularTerrain
                 ["csvPath"] = TerrainLayoutIO.CsvPath,
                 ["cleared"] = true,
                 ["total"] = 0,
+            };
+        }
+
+        // ---- 场景实例化（按坐标加载/卸载单个地形块） ----
+
+        /// <summary>
+        /// 取得场景中活动的 ModularTerrainManager 实例（供实例化命令使用）。
+        /// 场景中没有则依据固定预制体 Assets/ModularTerrainManager.prefab 实例化一个。
+        /// </summary>
+        private static ModularTerrainManager GetSceneManager()
+        {
+            var mgr = Object.FindObjectOfType<ModularTerrainManager>();
+            if (mgr == null)
+            {
+                GameObject prefab = TerrainCommandHelper.LoadOrCreateManagerPrefab(out _);
+                GameObject inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                mgr = inst.GetComponent<ModularTerrainManager>();
+            }
+            return mgr;
+        }
+
+        [BridgeCommand("terrain.layout_load",
+            "按网格坐标 (x,z) 加载/刷新单个地形块：刷新模块库与排布后，从 CSV 读取该格排布，" +
+            "实例化对应模块到场景（相邻格自动贴合，因本工作流所有模块同尺寸）。参数: x,z(int 网格坐标)")]
+        public static object LayoutLoad(BridgeContext ctx, JObject args)
+        {
+            int x = ReqInt(args, "x");
+            int z = ReqInt(args, "z");
+            var mgr = GetSceneManager();
+            mgr.LoadModules();        // 刷新模块引用（捕获最新 tile 库）
+            mgr.RecalcGridStep();     // 同步网格步进为模块尺寸
+            mgr.LoadLayoutFromCsv();  // 刷新排布（捕获最新的 layout_set 写入）
+            Vector2Int key = new Vector2Int(x, z);
+            bool hasCell = mgr.layout.ContainsKey(key);
+            int moduleId = hasCell ? mgr.layout[key].moduleId : -1;
+            mgr.LoadTerrainModule(x, z);  // 内部按坐标实例化（已加载则先卸再载）
+            return new Dictionary<string, object>
+            {
+                ["x"] = x,
+                ["z"] = z,
+                ["loaded"] = hasCell,
+                ["moduleId"] = moduleId,
+                ["gridStepX"] = mgr.gridStepX,
+                ["gridStepZ"] = mgr.gridStepZ,
+            };
+        }
+
+        [BridgeCommand("terrain.layout_unload",
+            "卸载（销毁）网格坐标 (x,z) 处已实例化的地形模块。若该坐标无实例则忽略。" +
+            "参数: x,z(int 网格坐标)")]
+        public static object LayoutUnload(BridgeContext ctx, JObject args)
+        {
+            int x = ReqInt(args, "x");
+            int z = ReqInt(args, "z");
+            var mgr = GetSceneManager();
+            bool existed = mgr.HasLoaded(x, z);
+            mgr.UnloadTerrainModule(x, z);
+            return new Dictionary<string, object>
+            {
+                ["x"] = x,
+                ["z"] = z,
+                ["unloaded"] = existed,
             };
         }
     }

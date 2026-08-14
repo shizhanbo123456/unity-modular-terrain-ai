@@ -190,11 +190,42 @@ namespace ModularTerrain
         }
 
         /// <summary>
-        /// 唤醒时全量读取 CSV，使 layout 字典立即可供加载/卸载使用。
+        /// 唤醒时全量读取 CSV，使 layout 字典立即可供加载/卸载使用；
+        /// 并按「所有模块同尺寸」前提把网格步进同步为模块尺寸。
         /// </summary>
         private void Awake()
         {
             LoadLayoutFromCsv();
+            RecalcGridStep();
+        }
+
+        /// <summary>
+        /// 本工作流约定「所有模块同尺寸」，因此网格步进固定等于模块尺寸：
+        /// 取 <see cref="modules"/> 中第一个有效模块的长宽作为网格步进
+        /// （gridStepX = 模块长 moduleSize.x，gridStepZ = 模块宽 moduleSize.y）。
+        /// 这样相邻格 (x,z) 与 (x+1,z) 在世界中恰好贴合，既无重叠也无空隙。
+        /// 模块库为空时保持当前 gridStepX/gridStepZ 不变。
+        /// </summary>
+        public void RecalcGridStep()
+        {
+            if (modules == null) return;
+            foreach (var m in modules)
+            {
+                if (m != null)
+                {
+                    gridStepX = m.moduleSize.x;
+                    gridStepZ = m.moduleSize.y;
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 查询网格坐标 (x,z) 处是否已有加载（实例化）的地形模块。
+        /// </summary>
+        public bool HasLoaded(int x, int z)
+        {
+            return loadedInstances.ContainsKey(new Vector2Int(x, z));
         }
 
         /// <summary>
