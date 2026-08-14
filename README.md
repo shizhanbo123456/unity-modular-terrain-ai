@@ -42,8 +42,7 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 unity-modular-terrain-ai/
 ├── README.md                       # ← 本文件：项目总览与路线
-├── unity_project.ini               # 工作流根配置：记录 Unity 工程 Assets 绝对路径
-├── terrain_config.json             # Python 端维护的地形配置（精度 + 模块目录）
+├── unity_project.ini               # 工作流根配置：记录 Unity 工程 Assets 绝对路径（仅定位工程，不存配置）
 │
 ├── unity-python-bridge/            # ← 命令行操控 Unity Editor 的基础设施（已就绪）
 │   ├── README.md                   #   桥接工具详细文档（架构/协议/扩展方法）

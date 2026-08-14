@@ -11,7 +11,7 @@
         [--bg "0.2,0.2,0.2,1"] [--light 1.5]
     python -m unity_bridge terrain-sync --precision 0.5 \
         --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
-    python -m unity_bridge terrain-sync --config terrain_config.json   # 读取 JSON 同步
+    python -m unity_bridge terrain-sync --read   # 读取 Unity 管理器中的全局配置
 """
 
 from __future__ import annotations
@@ -170,65 +170,27 @@ def _cmd_screenshot(args) -> int:
 
 
 def _cmd_terrain_sync(args) -> int:
-    # 读取模式：打印 Python 记录值与 Unity 实际值（不修改任何一侧）
+    # 读取模式：打印 Unity 管理器中存储的全局配置（唯一数据源，不读任何本地文件）
     if args.read:
-        repo = _repo_root()
         with UnityClient(args.host, args.port, args.timeout) as client:
             unity_cfg = client.get_terrain_config()
 
-        py_path = repo / "terrain_config.json"
-        py_cfg = None
-        if py_path.exists():
-            try:
-                py_cfg = json.loads(py_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                py_cfg = None
-
-        print("=== Python 记录值 (terrain_config.json) ===")
-        if py_cfg:
-            print(f"  sizePrecision    : {py_cfg.get('sizePrecision')}")
-            print(f"  moduleDirectories: {py_cfg.get('moduleDirectories')}")
-        else:
-            print("  (文件不存在或无内容)")
-        print("=== Unity 实际值 (由 Unity 返回) ===")
+        print("=== Unity 管理器全局配置（唯一数据源） ===")
         print(f"  source           : {unity_cfg.get('source')}")
         print(f"  sizePrecision    : {unity_cfg.get('sizePrecision')}")
         print(f"  moduleDirectories: {unity_cfg.get('moduleDirectories')}")
         print(f"  moduleCount      : {unity_cfg.get('moduleCount')}")
         return 0
 
+    # 写入模式：把命令行传入的配置写入 Unity 管理器预制体；Python 侧不保存任何本地副本
+    if args.precision is None:
+        print("[错误] 写入模式必须指定 --precision", file=sys.stderr)
+        return 1
+    precision = args.precision
+    directories = list(args.dir or [])
+
+    # 用 ini 中的 Assets 路径校验模块目录是否存在于磁盘（仅警告，不参与配置存储）
     repo = _repo_root()
-    config_path = Path(args.config) if args.config else (repo / "terrain_config.json")
-
-    # 读取或构建配置
-    if args.config:
-        try:
-            cfg = json.loads(config_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            print(f"[错误] 读取配置文件失败 {config_path}: {e}", file=sys.stderr)
-            return 1
-        try:
-            precision = float(cfg["sizePrecision"])
-            directories = [str(d) for d in cfg["moduleDirectories"]]
-        except (KeyError, TypeError, ValueError) as e:
-            print(f"[错误] 配置文件缺少 sizePrecision/moduleDirectories: {e}", file=sys.stderr)
-            return 1
-    else:
-        if args.precision is None:
-            print("[错误] 未提供 --config 时，必须指定 --precision", file=sys.stderr)
-            return 1
-        precision = args.precision
-        directories = list(args.dir or [])
-        # Python 端创建/更新配置 JSON（仓库根 terrain_config.json）
-        config_path.write_text(
-            json.dumps(
-                {"sizePrecision": precision, "moduleDirectories": directories},
-                ensure_ascii=False, indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-    # 用 ini 中的 Assets 路径校验模块目录是否存在于磁盘（仅警告）
     assets_path = _load_ini_assets_path(repo / "unity_project.ini")
     if assets_path:
         for d in directories:
@@ -375,13 +337,11 @@ def build_parser() -> argparse.ArgumentParser:
         "terrain-sync", aliases=["tsync"],
         help="将 Python 端地形配置同步到 Unity 管理器预制体")
     p_sync.add_argument("--precision", type=float, default=None,
-                        help="最小尺寸精度（正数）。未用 --config 时必填")
+                        help="最小尺寸精度（正数）。写入模式必填")
     p_sync.add_argument("--dir", action="append", default=[],
                         help="模块目录（Assets 相对路径），可多次指定")
-    p_sync.add_argument("--config", default=None,
-                        help="直接读取该 JSON 配置（含 sizePrecision/moduleDirectories）")
     p_sync.add_argument("--read", action="store_true",
-                        help="读取模式：打印 Python 记录值与 Unity 实际值（不修改任何一侧）")
+                        help="读取模式：打印 Unity 管理器中的全局配置（不修改任何一侧）")
     p_sync.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_sync.set_defaults(func=_cmd_terrain_sync)
 

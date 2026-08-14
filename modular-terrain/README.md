@@ -60,50 +60,44 @@ modular-terrain/
 
 ## 配置同步（terrain.sync_config）
 
-管理器预制体的配置由 Python 端维护并一键同步进 Unity。
+全局配置（sizePrecision + moduleDirectories）的唯一真相源是 **Unity 管理器预制体**；Python 仅作为下发指令的通道，不在本地保存任何副本文件。
 
-### 仓库根目录的两个配置文件
+### 配置文件
 
-- **`unity_project.ini`**（工作流根目录）：记录 Unity 工程的 Assets 绝对路径，供 Python 端定位工程、校验模块目录是否存在：
+- **`unity_project.ini`**（工作流根目录）：记录 Unity 工程的 Assets 绝对路径，供 Python 端定位工程、校验模块目录是否存在于磁盘（仅警告，不参与配置存储）：
   ```ini
   [unity]
   assets_path = D:/Projects/MyTerrainGame/Assets
   ```
-- **`terrain_config.json`**（Python 端创建/维护）：保存管理器的两项配置：
-  ```json
-  {
-    "sizePrecision": 0.5,
-    "moduleDirectories": ["Assets/ModularTerrain/Modules"]
-  }
-  ```
 
-### 同步命令（全局模块配置读写）
+> **全局模块配置（sizePrecision / moduleDirectories）只存储在 Unity 管理器预制体**
+> （`Assets/ModularTerrainManager.prefab`）中。Python 端不另存任何本地文件，
+> 读取用 `terrain-sync --read`，写入用 `terrain-sync --precision ... --dir ...`。
+
+### 同步命令（全局模块配置读写，唯一数据源 = Unity 管理器）
 
 `terrain.sync_config`（桥接命令，由 `TerrainSyncConfigCommand.cs` 实现，反射自动注册）支持
-**写入**与**读取**两种模式（`action` 参数）：
+**写入**与**读取**两种模式（`action` 参数）。无论哪种模式，配置都只存在于 Unity 管理器预制体，
+Python 端不维护任何副本：
 
 - **写入（默认 `action="write"`）**：接收 `sizePrecision` 与 `moduleDirectories`，写入管理器预制体。
   - **管理器预制体固定位于 `Assets/ModularTerrainManager.prefab`**：
     - 不存在则创建（挂 `ModularTerrainManager` 并存为 prefab）；
     - 若在其它目录被发现，则**移回该固定位置**（实现「不允许移动到别的目录」约定）；
     - 随后写入并持久化（`SaveAssets`）。
-  - Python 侧：写入时**同时修改 Python 记录值**（`terrain_config.json`）与 Unity 预制体中的值。
   - 返回 `{ prefabPath, created, sizePrecision, moduleDirectories, moduleCount }`。
 - **读取（`action="read"`）**：由 Unity 通过 API 读取管理器预制体组件的当前配置并返回
-  （**不解析 .prefab 文件**），供 Python 端比对「Python 记录值」与「Unity 实际值」。
+  （**不解析 .prefab 文件**）。Unity 管理器是全局配置的唯一数据源。
   - 返回 `{ source:"unity", sizePrecision, moduleDirectories, moduleCount }`。
 
 Python 侧用法（`unity-python-bridge/python` 下）：
 
 ```bash
-# 写入方式一：直接给出参数，Python 端会写回 terrain_config.json 后再同步
+# 写入：把命令行参数直接写入 Unity 管理器预制体（Python 不保存本地副本）
 python -m unity_bridge terrain-sync --precision 0.5 \
     --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
 
-# 写入方式二：读取已有 JSON 配置同步（不覆盖文件）
-python -m unity_bridge terrain-sync --config ../../terrain_config.json
-
-# 读取：打印 Python 记录值 (terrain_config.json) 与 Unity 实际值（由 Unity 返回）
+# 读取：打印 Unity 管理器中的全局配置（唯一数据源，不修改任何一侧）
 python -m unity_bridge terrain-sync --read
 ```
 

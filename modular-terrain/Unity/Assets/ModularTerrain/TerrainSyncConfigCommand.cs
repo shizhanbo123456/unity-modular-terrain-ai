@@ -12,8 +12,8 @@ namespace ModularTerrain
     /// 读取与写入，均经 unity-python-bridge 命令总线分发。
     ///
     ///   action = "write"（默认）：将 Python 端配置写入 Unity 管理器预制体。
-    ///   action = "read"：由 Unity 通过 API 读取预制体组件的当前配置并返回（不解析 .prefab 文件），
-    ///        供 Python 端比对「Python 记录值」与「Unity 实际值」。
+    ///   action = "read"：由 Unity 通过 API 读取预制体组件的当前配置并返回（不解析 .prefab 文件）。
+    ///        Unity 管理器是全局配置的唯一数据源，Python 端不另存任何本地副本。
     ///
     /// 管理器预制体固定位于 Assets/ModularTerrainManager.prefab（不存在则创建；在别处则移回）。
     /// </summary>
@@ -47,7 +47,7 @@ namespace ModularTerrain
                 };
             }
 
-            // ---- 写入：同时修改 Unity 预制体（Python 侧记录值由 CLI 负责写回 json） ----
+            // ---- 写入：修改 Unity 管理器预制体（Python 侧不保存任何本地副本文件） ----
             float sizePrecision = args.Value<float>("sizePrecision");
             if (sizePrecision <= 0f)
                 throw new System.ArgumentException("sizePrecision 必须为正数");
