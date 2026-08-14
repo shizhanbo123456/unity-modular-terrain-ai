@@ -31,8 +31,8 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 
 > **底座已就绪**：`unity-python-bridge/` 已实现 TCP + 单行 JSON 协议、反射自动注册命令、
-> 主线程安全执行，当前共 **10 条命令**（桥接层原生 5 条 + modular-terrain 插件 5 条），详见下方「三、可用命令一览」。
-> 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器与各 `terrain.*` 命令（数据层 + 接线）。
+> 主线程安全执行，当前共 **14 条命令**（桥接层原生 5 条 + modular-terrain 插件 9 条），详见下方「三、可用命令一览」。
+> 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器、排布缓存与各 `terrain.*` 命令（数据层 + 接线）。
 > "地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
 
 ---
@@ -59,17 +59,21 @@ unity-modular-terrain-ai/
 └── modular-terrain/                # ← 模块化地形模块（数据层 + 地形专属桥接命令）
     ├── README.md                   #   模块文档（组件 / 管理器 / 配置同步 / 排布）
     └── Unity/Assets/ModularTerrain/  # C# 侧：复制到 Unity 项目 Assets/ 下
-        ├── ModularTerrainModule.cs     # 模块地形组件（含 Gizmos 无盖无底盒子）
-        ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表）
+        ├── ModularTerrainModule.cs     # 模块地形组件（含 id / description / 四边高度 + Gizmos 无盖无底盒子）
+        ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表 / CSV 全量缓存 / 按坐标加载·卸载）
+        ├── TerrainLayoutIO.cs          # 共享 CSV 读写 + 信息结构体 TerrainLayoutCell（不依赖 UNITY_EDITOR）
         ├── TerrainConfigCommands.cs    # 桥接命令 terrain.config_get / terrain.config_set（反射自动注册）
         ├── TerrainModuleCommands.cs    # 桥接命令 terrain.module_*
-        ├── TerrainLayoutCommands.cs    # 桥接命令 terrain.layout_*（排布，数据存于 Resources CSV）
+        ├── TerrainLayoutCommands.cs    # 桥接命令 terrain.layout_*（排布，数据存于 Resources CSV，复用 TerrainLayoutIO）
         └── Resources/
             └── TerrainLayout.csv       # 地形排布数据（默认空，仅表头；由 Unity 命令读写）
 ```
 
 > `modular-terrain/` 是地形工作流的**数据层**：组件与管理器定义地形模块规范，
 > `terrain.config_*` / `terrain.module_*` / `terrain.layout_*` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
+> 管理器在 `Awake` 时全量读取 CSV 缓存为 `Dictionary<Vector2Int, TerrainLayoutCell>`，并对外暴露
+> `LoadTerrainModule(int,int)` / `UnloadTerrainModule(int,int)` 按网格坐标实例化 / 销毁模块 prefab。
+> Python 侧的 `layout-recommend` 还会在写入/推荐前强制校验相邻模块墙顶高度无缝拼接（详见「三」附加能力）。
 > 后续会逐步新增 `terrain/` （地形 DSL 与 AI 生成脚本）等子目录。
 
 ---
@@ -131,14 +135,14 @@ unity-modular-terrain-ai/
 
 ## 五、AI 模块化地形工作流 · 路线规划
 
-当前仅底座就绪。后续分阶段目标（待实现）：
+当前底座与地形数据层已就绪（阶段 3 进行中）。后续分阶段目标：
 
 | 阶段 | 目标 | 依赖 |
 |---|---|---|
 | **0. 通信底座** ✅ | Python↔Unity 命令行桥接，反射注册命令 | `unity-python-bridge`（已完成） |
 | **1. 场景读能力** ✅ | `scene.tree`（树状物体层级）；查询物体/包围盒/截图等命令 | 底座（已完成） |
 | **2. 实例化命令** | 新增 `terrain.spawn` 等命令：按参数在场景实例化指定 prefab 并设置 transform | 底座 + 资源库 |
-| **3. 模块化地形库** 🔧 | 地形 tile 规范（`ModularTerrainModule` 组件 + `ModularTerrainManager` 管理器 + `terrain.sync_config` 配置同步已落地）；待沉淀可拼接 prefab 资源库 | `modular-terrain`（进行中） |
+| **3. 模块化地形库** 🔧 | 地形 tile 规范（`ModularTerrainModule` 组件 + `ModularTerrainManager` 管理器 + `terrain.config_get/config_set` 全局配置 + `terrain.module_*` 模块管理 + `terrain.layout_*` 排布 CSV + 管理器按坐标 `Load/UnloadTerrainModule` 运行时实例化）；待沉淀可拼接 prefab 资源库 | `modular-terrain`（进行中） |
 | **4. 地形 DSL** | Python 侧用声明式配置描述"哪里放哪块tile、如何拼接" | 阶段 2-3 |
 | **5. AI 生成** | 接入大模型：从自然语言/草图生成地块配置，写入 DSL 并下发 Unity 实例化 | 阶段 4 |
 
