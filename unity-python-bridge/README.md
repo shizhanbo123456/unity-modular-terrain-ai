@@ -1,0 +1,218 @@
+# UnityPythonBridge — 通过 Python 命令行操控 Unity Editor
+
+在 Unity Editor 运行时，通过 Python 命令行工具对编辑器进行操控。架构上采用 **TCP + 单行 JSON** 协议，C# 侧通过**反射**自动注册命令，新增命令零样板代码。
+
+---
+
+## 一、架构总览
+
+```
+┌─────────────────────────────┐          ┌───────────────────────────────────┐
+│         Python 侧            │          │            Unity Editor            │
+│                             │          │                                   │
+│  ┌───────────────────────┐  │  TCP     │  ┌─────────────────────────────┐  │
+│  │ cli.py (命令行入口)    │  │ JSON行    │  │ BridgeServer (TCP 监听)      │  │
+│  │   tree / list / ...   │──┼─────────▶│  │   · 仅监听 127.0.0.1         │  │
+│  └──────────┬────────────┘  │          │   · 后台线程收/发              │  │
+│             │               │          │  └──────────┬──────────────────┘  │
+│  ┌──────────▼────────────┐  │          │             │ 投递 (线程安全队列)   │
+│  │ client.py              │  │          │  ┌──────────▼──────────────────┐  │
+│  │  · socket 收发          │  │          │  │ MainThreadRunner            │  │
+│  │  · JSON 编解码          │  │          │  │  · 主线程队列                │  │
+│  │  · call(cmd, **args)   │  │          │  └──────────┬──────────────────┘  │
+│  └───────────────────────┘  │          │             │ 主线程 Flush          │
+│                             │          │  ┌──────────▼──────────────────┐  │
+│                             │          │  │ BridgeDispatcher (反射分发)  │  │
+│                             │          │  │  · 扫描 [BridgeCommand] 特性  │  │
+│                             │          │  └──────────┬──────────────────┘  │
+│                             │          │             │                     │
+│                             │          │  ┌──────────▼──────────────────┐  │
+│                             │          │  │ Commands/                   │  │
+│                             │          │  │  SceneTreeCommand           │  │
+│                             │          │  │  SystemCommands             │  │
+│                             │          │  └─────────────────────────────┘  │
+└─────────────────────────────┘          └───────────────────────────────────┘
+```
+
+**核心设计决策：**
+
+| 决策点 | 方案 | 理由 |
+|---|---|---|
+| 通信协议 | TCP + 单行 JSON（UTF-8） | 简单可靠、调试直观（可用 netcat 直接发命令） |
+| 监听地址 | `127.0.0.1` 仅本机 | 避免局域网暴露风险 |
+| 线程模型 | 后台线程收发 + **主线程队列执行** | Unity API 只能主线程访问，`EditorApplication.update` 驱动队列，Edit Mode 与 Play Mode 均安全可用 |
+| 命令注册 | **反射扫描 `[BridgeCommand]` 特性** | 新增命令只需写一个静态方法类，零改动现有代码 |
+| 数据格式 | 请求 `{id, cmd, args}` / 响应 `{id, ok, data\|error}` | 支持并发请求（按 id 匹配），错误与数据分离 |
+| Python 依赖 | 纯标准库 | 零安装成本，Python 3.8+ |
+
+**为什么需要反射：** 分发器在静态构造时扫描所有程序集，凡是带 `[BridgeCommand]` 特性的静态方法都会自动注册。后续你要实现"通过反射调用任意 Unity 对象方法/属性"等高级命令时，可以复用同一套分发机制，Python 侧只需传 `cmd + args` 即可。
+
+---
+
+## 二、目录结构
+
+```
+UnityPythonBridge/
+├── Unity/                                # ← 复制到 Unity 项目 Assets/ 下
+│   └── Assets/UnityPythonBridge/
+│       ├── Editor/
+│       │   └── BridgeWindow.cs           # 控制窗口（启动/停止服务器、日志）
+│       └── Runtime/
+│           ├── BridgeCommandAttribute.cs # [BridgeCommand] 命令特性
+│           ├── BridgeContext.cs          # 执行上下文 + 委托定义
+│           ├── BridgeDispatcher.cs       # 反射扫描 + 命令分发
+│           ├── BridgeServer.cs           # TCP 服务器（单行 JSON 协议）
+│           ├── MainThreadRunner.cs       # 主线程执行队列
+│           └── Commands/
+│               ├── SceneTreeCommand.cs   # 命令 scene.tree（第一个功能）
+│               └── SystemCommands.cs     # bridge.ping / bridge.list_commands
+│
+└── python/                               # Python 侧（无需安装依赖）
+    ├── unity_bridge/
+    │   ├── __init__.py
+    │   ├── client.py                     # TCP/JSON 客户端 UnityClient
+    │   ├── cli.py                        # 命令行入口（tree / list）
+    │   └── __main__.py                   # 支持 python -m unity_bridge
+    ├── scripts/
+    │   └── mock_unity_server.py          # 模拟 Unity 侧协议，无 Unity 也能联调
+    └── requirements.txt
+```
+
+---
+
+## 三、使用步骤
+
+### 1. Unity 侧
+
+1. 将 `Unity/Assets/UnityPythonBridge` 整个文件夹复制到你的 Unity 项目 `Assets/` 下。
+2. **安装 Newtonsoft.Json 依赖**（Unity 官方包）：在 `Packages/manifest.json` 的 `dependencies` 中加入：
+
+   ```json
+   "com.unity.nuget.newtonsoft-json": "3.2.1"
+   ```
+
+   （建议通过 Package Manager → `+` → Add package by name 安装）
+
+3. 打开菜单 **Tools → Unity Python Bridge**，点击「启动服务器」，看到日志提示监听 `127.0.0.1:21927` 即成功。
+   - 也可以直接用菜单 **Tools → Unity Python Bridge → Start Server**。
+   - Edit Mode 和 Play Mode 均可使用（命令在主线程执行）。
+
+### 2. Python 侧
+
+```bash
+cd python
+
+# 打印当前场景物体层级树（第一个命令功能）
+python -m unity_bridge tree
+
+# 附带显示每个物体的组件类型
+python -m unity_bridge tree --components
+
+# 输出原始 JSON（供程序化处理）
+python -m unity_bridge tree --json
+
+# 查看 Unity 侧所有可用命令
+python -m unity_bridge list
+
+# 自定义端口
+python -m unity_bridge tree --port 21928
+```
+
+### 3. 无 Unity 环境联调（可选）
+
+```bash
+# 终端 A：启动模拟服务器（复刻 Unity 侧协议）
+python scripts/mock_unity_server.py
+
+# 终端 B：正常使用 CLI
+python -m unity_bridge tree --components
+```
+
+---
+
+## 四、树状输出示例
+
+```
+Scene: DemoScene  (3 个根物体)
+Main Camera  [Transform, Camera, AudioListener]
+Directional Light  [Transform, Light]
+Player  [Transform, CharacterController, PlayerController]
+├── Body  [Transform, Animator]
+│   ├── LeftArm  [Transform]
+│   └── RightArm  [Transform]
+└── Head  [Transform, SkinnedMeshRenderer]
+    └── Hat (inactive)  [Transform]
+```
+
+---
+
+## 五、如何扩展新命令（核心能力）
+
+新增命令 = 新建一个静态方法 + 打上特性，**不需要改任何其他代码**：
+
+```csharp
+// Runtime/Commands/MyCommands.cs
+using Newtonsoft.Json.Linq;
+using UnityEngine;
+
+namespace UnityPythonBridge.Commands
+{
+    public static class MyCommands
+    {
+        [BridgeCommand("debug.log", "在 Unity Console 打印一行日志。参数: message(string)")]
+        public static object Log(BridgeContext ctx, JObject args)
+        {
+            var message = args.Value<string>("message") ?? "";
+            Debug.Log("[Bridge] " + message);
+            return new { logged = true, length = message.Length };
+        }
+    }
+}
+```
+
+保存后重新编译，Python 侧即可使用：
+
+```bash
+python -m unity_bridge call debug.log --message "hello"
+```
+
+> `call` 通用子命令暂未实现（当前有 tree / list），如有需要可以加，或直接用 Python API：
+> ```python
+> from unity_bridge import UnityClient
+> with UnityClient() as c:
+>     c.call("debug.log", message="hello")
+> ```
+
+**命令签名约定：**
+
+```csharp
+public static object MethodName(BridgeContext ctx, Newtonsoft.Json.Linq.JObject args)
+```
+
+- `ctx`：执行上下文（预留扩展位，如注入日志/连接信息）
+- `args`：请求参数，用 `args.Value<T>("key")` 读取，缺省安全
+- 返回值：任意可 JSON 序列化对象（匿名类、JObject、JArray、基本类型均可）
+
+---
+
+## 六、协议参考
+
+```jsonc
+// 请求（一行）
+{"id": 1, "cmd": "scene.tree", "args": {"components": true}}
+
+// 成功响应（一行）
+{"id": 1, "ok": true, "data": { "...": "..." }}
+
+// 失败响应（一行）
+{"id": 1, "ok": false, "error": "未知命令: xxx（可用 bridge.list_commands 查看全部命令）"}
+```
+
+---
+
+## 七、安全与注意事项
+
+- 服务器**只绑定 127.0.0.1**，仅本机进程可访问，不会暴露到局域网。
+- 命令在主线程执行，避免 Unity API 跨线程调用崩溃。
+- 关闭 Bridge 窗口会自动停止服务器，不留后台线程。
+- 若要在打包后的 Player 中使用，请自行评估：本项目针对 **Editor 开发期工具** 场景。
