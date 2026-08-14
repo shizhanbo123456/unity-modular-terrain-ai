@@ -42,10 +42,17 @@ modular-terrain/
 |---|---|---|
 | `sizePrecision` | `float` | 最小尺寸精度。之后处理的所有尺寸都必须是该数的整数倍 |
 | `moduleDirectories` | `List<string>` | 模块（prefab / 资源）所在目录列表（Assets 相对路径） |
-| `modules` | `List<ModularTerrainModule>` | 场景中所有地形模块组件（可由 `CollectModules` 自动收集） |
+| `modules` | `List<ModularTerrainModule>` | **地形模块的存储容器**：由 `LoadModules()` 根据 `moduleDirectories` 扫描资源目录、加载所有含 `ModularTerrainModule` 的资源并写入；也可用 `CollectModules()` 收集场景实例 |
 
-辅助方法：`CollectModules()`（收集场景全部模块）、`IsValidSize(float)`（校验是否为精度整数倍）、
-`SnapToPrecision(float)`（吸附到最近的精度整数倍）。本类为运行时组件，不依赖 UnityEditor。
+辅助方法：
+- `LoadModules()`（**编辑器内**）：按 `moduleDirectories` 用 `AssetDatabase` 扫描并加载所有含 `ModularTerrainModule` 的 prefab/资源，写入 `modules`；无效目录跳过并告警，重复资源自动去重
+- `CollectModules()`：收集场景中已实例化的全部模块（含未激活物体）写入 `modules`
+- `GetModulesWithValidSize()`：返回 `modules` 中尺寸符合 `sizePrecision` 精度的模块（按精度条件筛选）
+- `IsValidSize(float)`：校验尺寸是否为精度整数倍
+- `SnapToPrecision(float)`：吸附到最近的精度整数倍
+
+> `LoadModules()` 依赖 `AssetDatabase`，仅编辑器可用（已用 `#if UNITY_EDITOR` 隔离）。类是运行时组件，
+> 但「从资源目录加载模块」这一步必须在编辑器内完成。
 
 ## 与桥接工具的关系
 
