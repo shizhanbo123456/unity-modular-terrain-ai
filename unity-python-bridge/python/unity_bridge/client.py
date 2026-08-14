@@ -125,6 +125,18 @@ class UnityClient:
             args["bg"] = bg
         return self.call("prefab.screenshot", **args)
 
+    def sync_terrain_config(self, size_precision: float, module_directories) -> dict:
+        """将 Python 端地形配置同步到 Unity 管理器预制体。
+
+        size_precision 为最小尺寸精度（正数）；module_directories 为模块目录列表
+        （Assets 相对路径字符串）。C# 侧会查找/创建 Assets 根目录下的管理器预制体并写入。
+        """
+        return self.call(
+            "terrain.sync_config",
+            sizePrecision=size_precision,
+            moduleDirectories=list(module_directories),
+        )
+
     # ---- 内部 ----
 
     def _ensure_connected(self) -> None:

@@ -9,16 +9,38 @@
     python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png \
         --offset "3,2,5" [--orthographic] [--fov 50] [--width 1920] [--height 1080] \
         [--bg "0.2,0.2,0.2,1"] [--light 1.5]
+    python -m unity_bridge terrain-sync --precision 0.5 \
+        --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
+    python -m unity_bridge terrain-sync --config terrain_config.json   # 读取 JSON 同步
 """
 
 from __future__ import annotations
 
 import argparse
+import configparser
 import json
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from .client import DEFAULT_HOST, DEFAULT_PORT, UnityBridgeError, UnityClient
+
+
+def _repo_root() -> Path:
+    """cli.py 位于 <repo>/unity-python-bridge/python/unity_bridge/，向上 4 级即仓库根。"""
+    return Path(__file__).resolve().parents[3]
+
+
+def _load_ini_assets_path(ini_path: Path) -> Optional[str]:
+    """读取 ini 中 [unity] assets_path（Unity 工程 Assets 绝对路径），不存在返回 None。"""
+    if not ini_path.exists():
+        return None
+    cp = configparser.ConfigParser()
+    try:
+        cp.read(ini_path, encoding="utf-8")
+        return cp.get("unity", "assets_path").strip()
+    except (configparser.NoSectionError, configparser.NoOptionError, OSError):
+        return None
 
 # 树形绘制字符
 _TEE = "├── "
@@ -147,6 +169,61 @@ def _cmd_screenshot(args) -> int:
     return 0
 
 
+def _cmd_terrain_sync(args) -> int:
+    repo = _repo_root()
+    config_path = Path(args.config) if args.config else (repo / "terrain_config.json")
+
+    # 读取或构建配置
+    if args.config:
+        try:
+            cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"[错误] 读取配置文件失败 {config_path}: {e}", file=sys.stderr)
+            return 1
+        try:
+            precision = float(cfg["sizePrecision"])
+            directories = [str(d) for d in cfg["moduleDirectories"]]
+        except (KeyError, TypeError, ValueError) as e:
+            print(f"[错误] 配置文件缺少 sizePrecision/moduleDirectories: {e}", file=sys.stderr)
+            return 1
+    else:
+        if args.precision is None:
+            print("[错误] 未提供 --config 时，必须指定 --precision", file=sys.stderr)
+            return 1
+        precision = args.precision
+        directories = list(args.dir or [])
+        # Python 端创建/更新配置 JSON（仓库根 terrain_config.json）
+        config_path.write_text(
+            json.dumps(
+                {"sizePrecision": precision, "moduleDirectories": directories},
+                ensure_ascii=False, indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    # 用 ini 中的 Assets 路径校验模块目录是否存在于磁盘（仅警告）
+    assets_path = _load_ini_assets_path(repo / "unity_project.ini")
+    if assets_path:
+        for d in directories:
+            rel = d.lstrip("Assets/").lstrip("/")
+            abs_d = Path(assets_path) / rel
+            if not abs_d.exists():
+                print(f"[警告] 模块目录在磁盘上不存在: {abs_d}", file=sys.stderr)
+
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.sync_terrain_config(precision, directories)
+
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"prefab    : {data.get('prefabPath')}")
+    print(f"created   : {data.get('created')}")
+    print(f"precision : {data.get('sizePrecision')}")
+    print(f"dirs      : {data.get('moduleCount')} 个 -> {data.get('moduleDirectories')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="unity-bridge",
@@ -191,6 +268,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="补光强度（默认 0 不补光；>0 时追加与相机同向平行光）")
     p_shot.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_shot.set_defaults(func=_cmd_screenshot)
+
+    p_sync = sub.add_parser(
+        "terrain-sync", aliases=["tsync"],
+        help="将 Python 端地形配置同步到 Unity 管理器预制体")
+    p_sync.add_argument("--precision", type=float, default=None,
+                        help="最小尺寸精度（正数）。未用 --config 时必填")
+    p_sync.add_argument("--dir", action="append", default=[],
+                        help="模块目录（Assets 相对路径），可多次指定")
+    p_sync.add_argument("--config", default=None,
+                        help="直接读取该 JSON 配置（含 sizePrecision/moduleDirectories）")
+    p_sync.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_sync.set_defaults(func=_cmd_terrain_sync)
 
     return parser
 

@@ -11,7 +11,8 @@ modular-terrain/
 │   └── Assets/
 │       └── ModularTerrain/     # 本模块 C# 代码
 │           ├── ModularTerrainModule.cs    # 模块地形组件
-│           └── ModularTerrainManager.cs   # 模块化地形管理器（Mono）
+│           ├── ModularTerrainManager.cs   # 模块化地形管理器（Mono）
+│           └── TerrainSyncConfigCommand.cs # 桥接命令 terrain.sync_config（反射注册）
 └── README.md
 ```
 
@@ -54,8 +55,52 @@ modular-terrain/
 > `LoadModules()` 依赖 `AssetDatabase`，仅编辑器可用（已用 `#if UNITY_EDITOR` 隔离）。类是运行时组件，
 > 但「从资源目录加载模块」这一步必须在编辑器内完成。
 
+## 配置同步（terrain.sync_config）
+
+管理器预制体的配置由 Python 端维护并一键同步进 Unity。
+
+### 仓库根目录的两个配置文件
+
+- **`unity_project.ini`**（工作流根目录）：记录 Unity 工程的 Assets 绝对路径，供 Python 端定位工程、校验模块目录是否存在：
+  ```ini
+  [unity]
+  assets_path = D:/Projects/MyTerrainGame/Assets
+  ```
+- **`terrain_config.json`**（Python 端创建/维护）：保存管理器的两项配置：
+  ```json
+  {
+    "sizePrecision": 0.5,
+    "moduleDirectories": ["Assets/ModularTerrain/Modules"]
+  }
+  ```
+
+### 同步命令
+
+`terrain.sync_config`（桥接命令，由 `TerrainSyncConfigCommand.cs` 实现，反射自动注册）接收
+`sizePrecision` 与 `moduleDirectories`，写入管理器预制体：
+
+- **管理器预制体固定位于 `Assets/ModularTerrainManager.prefab`**：
+  - 不存在则创建（挂 `ModularTerrainManager` 并存为 prefab）；
+  - 若在其它目录被发现，则**移回该固定位置**（实现「不允许移动到别的目录」约定）；
+  - 随后写入 `sizePrecision` 与 `moduleDirectories` 并持久化（`SaveAssets`）。
+- 返回 `{ prefabPath, created, sizePrecision, moduleDirectories, moduleCount }`。
+
+Python 侧用法（`unity-python-bridge/python` 下）：
+
+```bash
+# 方式一：直接给出参数，Python 端会写回 terrain_config.json 后再同步
+python -m unity_bridge terrain-sync --precision 0.5 \
+    --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
+
+# 方式二：读取已有 JSON 配置同步（不覆盖文件）
+python -m unity_bridge terrain-sync --config ../../terrain_config.json
+```
+
+> 同步前 Python 会用 `unity_project.ini` 中的 `assets_path` 校验每个模块目录是否真实存在于磁盘，
+> 不存在仅打印警告、不阻断同步。
+
 ## 与桥接工具的关系
 
 `../unity-python-bridge/` 提供「Python 命令行操控 Unity Editor」的能力；本模块是地形工作流的
-**数据层**。后续可通过桥接工具下发命令（例如读取/写入模块、批量实例化、调用管理器收集模块等），
-但目前二者尚未接线——本模块先独立提供可导入、可可视化的组件基础。
+**数据层**。二者已通过 `terrain.sync_config` 桥接命令接线——该命令定义在 `ModularTerrain` 命名空间下，
+由桥接层反射扫描所有程序集自动发现（无需在桥接层写任何地形相关代码）。

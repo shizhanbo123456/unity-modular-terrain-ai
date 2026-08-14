@@ -47,6 +47,7 @@ COMMANDS = [
     {"name": "scene.tree", "description": "以树状结构返回当前场景中的物体层级。参数: components(bool)"},
     {"name": "mesh.bounds", "description": "计算 Assets 中网格/模型/预制体的轴对齐包围盒。参数: path(string)"},
     {"name": "prefab.screenshot", "description": "将预制体复制到场景隔离位置并截图保存为 PNG。参数: path(string), offset{x,y,z}, output(string,.png), orthographic(bool), fov(number), width(int), height(int), bg(string)"},
+    {"name": "terrain.sync_config", "description": "将 Python 端配置同步到管理器预制体。参数: sizePrecision(number), moduleDirectories(array<string>)"},
 ]
 
 
@@ -79,6 +80,8 @@ def handle_client(client: socket.socket) -> None:
                     data = mock_mesh_bounds(args.get("path", ""))
                 elif cmd == "prefab.screenshot":
                     data = mock_screenshot(args)
+                elif cmd == "terrain.sync_config":
+                    data = mock_sync_config(args)
                 else:
                     raise KeyError(f"未知命令: {cmd}")
                 resp = {"id": req.get("id"), "ok": True, "data": data}
@@ -149,6 +152,21 @@ def mock_screenshot(args: dict) -> dict:
         "lookAt": iso,
         "fillLight": light if light > 0 else 0,
         "bytes": len(png),
+    }
+
+
+def mock_sync_config(args: dict) -> dict:
+    """离线模拟 terrain.sync_config：回显收到的配置（真实写入由 Unity 侧完成）。"""
+    size_precision = float(args.get("sizePrecision", 0.5))
+    directories = list(args.get("moduleDirectories", []))
+    if size_precision <= 0:
+        raise ValueError("sizePrecision 必须为正数")
+    return {
+        "prefabPath": "Assets/ModularTerrainManager.prefab",
+        "created": True,
+        "sizePrecision": size_precision,
+        "moduleDirectories": directories,
+        "moduleCount": len(directories),
     }
 
 

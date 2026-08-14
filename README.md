@@ -31,8 +31,9 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 
 > **底座已就绪**：`unity-python-bridge/` 已实现 TCP + 单行 JSON 协议、反射自动注册命令、
-> 主线程安全执行，并包含第一个命令 `scene.tree`（树状打印场景物体）。
-> 上层的"地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
+> 主线程安全执行，并包含 `scene.tree` / `mesh.bounds` / `prefab.screenshot` 等命令。
+> 上层地形工作流已起步：`modular-terrain/` 提供了地形模块组件、管理器与 `terrain.sync_config`
+> 配置同步命令（数据层 + 接线）。"地形 DSL / AI 生成 / 实例化命令"为后续开发项，参见下方路线图。
 
 ---
 
@@ -41,21 +42,31 @@ Unity Editor，由反射机制实例化、摆放、拼接模块化地形 prefab�
 ```
 unity-modular-terrain-ai/
 ├── README.md                       # ← 本文件：项目总览与路线
+├── unity_project.ini               # 工作流根配置：记录 Unity 工程 Assets 绝对路径
+├── terrain_config.json             # Python 端维护的地形配置（精度 + 模块目录）
 │
-└── unity-python-bridge/            # ← 命令行操控 Unity Editor 的基础设施（已就绪）
-    ├── README.md                   #   桥接工具详细文档（架构/协议/扩展方法）
-    ├── Unity/                      #   C# 侧：复制到 Unity 项目 Assets/ 下
-    │   └── Assets/UnityPythonBridge/
-    │       ├── Editor/BridgeWindow.cs
-    │       └── Runtime/…           #   BridgeServer / Dispatcher / 命令 / 特性
-    └── python/                     #   Python 侧：纯标准库，零依赖
-        ├── unity_bridge/           #   client.py / cli.py / __main__.py
-        ├── scripts/mock_unity_server.py
-        └── requirements.txt
+├── unity-python-bridge/            # ← 命令行操控 Unity Editor 的基础设施（已就绪）
+│   ├── README.md                   #   桥接工具详细文档（架构/协议/扩展方法）
+│   ├── Unity/                      #   C# 侧：复制到 Unity 项目 Assets/ 下
+│   │   └── Assets/UnityPythonBridge/
+│   │       ├── Editor/BridgeWindow.cs
+│   │       └── Runtime/…           #   BridgeServer / Dispatcher / 命令 / 特性
+│   └── python/                     #   Python 侧：纯标准库，零依赖
+│       ├── unity_bridge/           #   client.py / cli.py / __main__.py
+│       ├── scripts/mock_unity_server.py
+│       └── requirements.txt
+│
+└── modular-terrain/                # ← 模块化地形模块（数据层 + 地形专属桥接命令）
+    ├── README.md                   #   模块文档（组件 / 管理器 / 配置同步）
+    └── Unity/Assets/ModularTerrain/  # C# 侧：复制到 Unity 项目 Assets/ 下
+        ├── ModularTerrainModule.cs     # 模块地形组件（含 Gizmos 无盖无底盒子）
+        ├── ModularTerrainManager.cs    # 管理器 Mono（精度 / 目录 / 模块列表）
+        └── TerrainSyncConfigCommand.cs # 桥接命令 terrain.sync_config（反射自动注册）
 ```
 
-> 后续地形工作流成形后，顶层目录会逐步新增例如 `terrain/` （地形 DSL 与 AI 生成脚本）、
-> `assets/` （模块化地形 prefab 资源说明）等子目录。
+> `modular-terrain/` 是地形工作流的**数据层**：组件与管理器定义地形模块规范，
+> `terrain.sync_config` 命令由桥接层反射扫描所有程序集自动发现，二者已接线。
+> 后续会逐步新增 `terrain/` （地形 DSL 与 AI 生成脚本）等子目录。
 
 ---
 
@@ -83,9 +94,9 @@ unity-modular-terrain-ai/
 | 阶段 | 目标 | 依赖 |
 |---|---|---|
 | **0. 通信底座** ✅ | Python↔Unity 命令行桥接，反射注册命令 | `unity-python-bridge`（已完成） |
-| **1. 场景读能力** | 扩展 `scene.tree` 之外：查询目标物体 Transform、组件参数、prefab 路径 | 底座 |
+| **1. 场景读能力** ✅ | `scene.tree`（树状物体层级）；查询物体/包围盒/截图等命令 | 底座（已完成） |
 | **2. 实例化命令** | 新增 `terrain.spawn` 等命令：按参数在场景实例化指定 prefab 并设置 transform | 底座 + 资源库 |
-| **3. 模块化地形库** | 定义地形 tile 规范（尺寸/拼接点/朝向），沉淀一套可拼接 prefab | Unity 资源 |
+| **3. 模块化地形库** 🔧 | 地形 tile 规范（`ModularTerrainModule` 组件 + `ModularTerrainManager` 管理器 + `terrain.sync_config` 配置同步已落地）；待沉淀可拼接 prefab 资源库 | `modular-terrain`（进行中） |
 | **4. 地形 DSL** | Python 侧用声明式配置描述"哪里放哪块tile、如何拼接" | 阶段 2-3 |
 | **5. AI 生成** | 接入大模型：从自然语言/草图生成地块配置，写入 DSL 并下发 Unity 实例化 | 阶段 4 |
 

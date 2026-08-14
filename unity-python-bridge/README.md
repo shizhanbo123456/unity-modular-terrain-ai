@@ -73,7 +73,7 @@ UnityPythonBridge/
     ├── unity_bridge/
     │   ├── __init__.py
     │   ├── client.py                     # TCP/JSON 客户端 UnityClient
-    │   ├── cli.py                        # 命令行入口（tree / list / mesh-bounds / screenshot）
+    │   ├── cli.py                        # 命令行入口（tree / list / mesh-bounds / screenshot / terrain-sync）
     │   └── __main__.py                   # 支持 python -m unity_bridge
     ├── scripts/
     │   └── mock_unity_server.py          # 模拟 Unity 侧协议，无 Unity 也能联调
@@ -129,6 +129,13 @@ python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png --offs
 # 正交相机 + 指定视野/分辨率/背景色；shot 为 screenshot 的别名
 python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-8" \
     --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
+
+# 将 Python 端地形配置同步到 Unity 管理器预制体（tsync 为别名）
+#   直接给参数：Python 会写回仓库根 terrain_config.json 再同步
+python -m unity_bridge terrain-sync --precision 0.5 \
+    --dir Assets/ModularTerrain/Modules --dir Assets/ModularTerrain/Ramps
+#   或读取已有 JSON 配置同步（不覆盖文件）
+python -m unity_bridge tsync --config ../../terrain_config.json
 
 # 自定义端口
 python -m unity_bridge tree --port 21928
