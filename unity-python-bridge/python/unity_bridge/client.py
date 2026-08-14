@@ -100,6 +100,28 @@ class UnityClient:
     def mesh_bounds(self, path: str) -> dict:
         return self.call("mesh.bounds", path=path)
 
+    def prefab_screenshot(self, path: str, offset: dict, output: str,
+                          orthographic: bool = False, fov=None,
+                          width: int = 1920, height: int = 1080, bg=None) -> dict:
+        """将目标预制体复制到场景隔离位置并截图保存为 PNG。
+
+        offset 为相机相对预制体的位置，形如 {"x":, "y":, "z":}。
+        fov / bg 为 None 时不发送，由 Unity 侧使用默认值。
+        """
+        args = {
+            "path": path,
+            "offset": offset,
+            "output": output,
+            "orthographic": orthographic,
+            "width": width,
+            "height": height,
+        }
+        if fov is not None:
+            args["fov"] = fov
+        if bg is not None:
+            args["bg"] = bg
+        return self.call("prefab.screenshot", **args)
+
     # ---- 内部 ----
 
     def _ensure_connected(self) -> None:

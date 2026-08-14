@@ -6,6 +6,8 @@
     python -m unity_bridge tree --json           # 输出原始 JSON
     python -m unity_bridge list                  # 列出 Unity 侧所有可用命令
     python -m unity_bridge mesh-bounds Assets/.../Rock.fbx   # 计算网格/模型/预制体包围盒
+    python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png \
+        --offset "3,2,5" [--orthographic] [--fov 50] [--width 1920] [--height 1080] [--bg "0.2,0.2,0.2,1"]
 """
 
 from __future__ import annotations
@@ -96,6 +98,51 @@ def _cmd_mesh_bounds(args) -> int:
     return 0
 
 
+def _parse_vec3(s: str) -> dict:
+    parts = [float(x) for x in s.split(",")]
+    if len(parts) != 3:
+        raise ValueError("需要 3 个分量，格式 'x,y,z'")
+    return {"x": parts[0], "y": parts[1], "z": parts[2]}
+
+
+def _cmd_screenshot(args) -> int:
+    try:
+        offset = _parse_vec3(args.offset)
+    except ValueError as e:
+        print(f"[错误] offset 解析失败: {e}", file=sys.stderr)
+        return 1
+
+    if not args.output.lower().endswith(".png"):
+        print(f"[错误] output 必须是 .png 文件路径（当前: {args.output}）", file=sys.stderr)
+        return 1
+
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.prefab_screenshot(
+            path=args.path,
+            offset=offset,
+            output=args.output,
+            orthographic=args.orthographic,
+            fov=args.fov,
+            width=args.width,
+            height=args.height,
+            bg=args.bg,
+        )
+
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+
+    cp = data.get("cameraPosition", {})
+    la = data.get("lookAt", {})
+    print(f"prefab : {data.get('resolvedPath')}")
+    print(f"output : {data.get('output')}")
+    print(f"camera : {data.get('cameraType')}  {data.get('width')}x{data.get('height')}")
+    print(f"camPos : ({cp.get('x')}, {cp.get('y')}, {cp.get('z')})")
+    print(f"lookAt : ({la.get('x')}, {la.get('y')}, {la.get('z')})")
+    print(f"bytes  : {data.get('bytes')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="unity-bridge",
@@ -121,6 +168,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_bounds.add_argument("path", help="目标在 Assets 中的相对路径（.mesh / 模型文件 / .prefab）")
     p_bounds.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_bounds.set_defaults(func=_cmd_mesh_bounds)
+
+    p_shot = sub.add_parser(
+        "screenshot", aliases=["shot"],
+        help="将预制体复制到场景隔离位置并截图保存为 PNG")
+    p_shot.add_argument("path", help="目标预制体在 Assets 中的相对路径（.prefab / 模型文件）")
+    p_shot.add_argument("output", help="PNG 输出路径（必须以 .png 结尾）")
+    p_shot.add_argument("--offset", required=True,
+                        help="相机相对预制体的位置，格式 'x,y,z'（如 '3,2,5'）")
+    p_shot.add_argument("--orthographic", action="store_true", help="使用正交相机（默认透视）")
+    p_shot.add_argument("--fov", type=float, default=None,
+                        help="视野：透视=fieldOfView，正交=orthographicSize（默认 Unity 默认）")
+    p_shot.add_argument("--width", type=int, default=1920, help="输出图片宽（默认 1920）")
+    p_shot.add_argument("--height", type=int, default=1080, help="输出图片高（默认 1080）")
+    p_shot.add_argument("--bg", default=None,
+                        help="背景色 'r,g,b[,a]'（0~1，默认透明）")
+    p_shot.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_shot.set_defaults(func=_cmd_screenshot)
 
     return parser
 

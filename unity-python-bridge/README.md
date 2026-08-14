@@ -65,13 +65,15 @@ UnityPythonBridge/
 │           ├── MainThreadRunner.cs       # 主线程执行队列
 │           └── Commands/
 │               ├── SceneTreeCommand.cs   # 命令 scene.tree（第一个功能）
+│               ├── MeshBoundsCommand.cs   # 命令 mesh.bounds（包围盒计算）
+│               ├── PrefabScreenshotCommand.cs  # 命令 prefab.screenshot（隔离复制+相机截图）
 │               └── SystemCommands.cs     # bridge.ping / bridge.list_commands
 │
 └── python/                               # Python 侧（无需安装依赖）
     ├── unity_bridge/
     │   ├── __init__.py
     │   ├── client.py                     # TCP/JSON 客户端 UnityClient
-    │   ├── cli.py                        # 命令行入口（tree / list）
+    │   ├── cli.py                        # 命令行入口（tree / list / mesh-bounds / screenshot）
     │   └── __main__.py                   # 支持 python -m unity_bridge
     ├── scripts/
     │   └── mock_unity_server.py          # 模拟 Unity 侧协议，无 Unity 也能联调
@@ -119,6 +121,14 @@ python -m unity_bridge mesh-bounds Assets/Models/Rock.fbx
 
 # 预制体同样支持；bounds 为 mesh-bounds 的别名，--json 输出原始数据
 python -m unity_bridge bounds Assets/Prefabs/Tree.prefab --json
+
+# 将预制体复制到场景隔离位置并截图保存为 PNG
+#   path/output 为位置参数；--offset 为相机相对预制体的位置（必填，格式 "x,y,z"）
+python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png --offset "3,2,5"
+
+# 正交相机 + 指定视野/分辨率/背景色；shot 为 screenshot 的别名
+python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-8" \
+    --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
 
 # 自定义端口
 python -m unity_bridge tree --port 21928
@@ -197,6 +207,67 @@ python -m unity_bridge bounds Assets/Prefabs/Tree.prefab --json   # bounds 为 m
 
 > 提示：`format` 字段即 `x:min~max, y:..., z:...` 可读格式；`min/max/center/size`
 > 为机器可解析的数值，方便后续地形拼接计算。
+
+---
+
+## 四-B、prefab.screenshot 命令（预制体截图）
+
+将目标预制体**复制到当前场景的隔离位置 `(9999,9999,9999)`**（远离原点，避免与场景中已有
+物体重叠/碰撞），创建一台相机移动到相对预制体的位置并 `LookAt` 看向它，渲染后保存为 PNG，
+**最后销毁临时复制的预制体与创建的相机**，不污染场景。
+
+**参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `path` | string | ✅ | 预制体（或模型文件）在 Assets 中的相对路径 |
+| `offset` | Vector3 | ✅ | 相机**相对预制体位置**的偏移，格式 `{x,y,z}` / `[x,y,z]` / `"x,y,z"` |
+| `output` | string | ✅ | PNG 输出路径，**必须以 `.png` 结尾**（父目录会自动创建） |
+| `orthographic` | bool | ❌ | 是否正交相机，默认 `false`（透视） |
+| `fov` | number | ❌ | 视野：透视时=`fieldOfView`，正交时=`orthographicSize`；**默认使用 Unity 默认大小** |
+| `width` | int | ❌ | 输出图片宽，默认 `1920` |
+| `height` | int | ❌ | 输出图片高，默认 `1080` |
+| `bg` | string | ❌ | 背景色 `"r,g,b[,a]"`（分量 0~1），默认**透明** |
+
+**坐标约定**：相机世界位置 = 隔离位置 `(9999,9999,9999)` + `offset`；`LookAt` 朝向隔离位置。
+因此其它场景物体位于相机背后（约 9999 单位外），不会进入画面。
+
+**返回结构**：
+
+```json
+{
+  "path": "Assets/Prefabs/Tree.prefab",
+  "resolvedPath": "Assets/Prefabs/Tree.prefab",
+  "output": "C:\\...\\out\\tree.png",
+  "cameraType": "perspective",
+  "width": 1920,
+  "height": 1080,
+  "cameraPosition": { "x": 10002, "y": 10001, "z": 10004 },
+  "lookAt": { "x": 9999, "y": 9999, "z": 9999 },
+  "bytes": 10570
+}
+```
+
+**命令行**：
+
+```bash
+# 透视相机，默认 1920x1080、透明背景
+python -m unity_bridge screenshot Assets/Prefabs/Tree.prefab out/tree.png --offset "3,2,5"
+# 文本输出：
+#   prefab : Assets/Prefabs/Tree.prefab
+#   output : C:\...\out\tree.png
+#   camera : perspective  1920x1080
+#   camPos : (10002.0, 10001.0, 10004.0)
+#   lookAt : (9999, 9999, 9999)
+#   bytes  : 10570
+
+# 正交相机 + 自定义视野/分辨率/背景色
+python -m unity_bridge shot Assets/Prefabs/Rock.fbx out/rock.png --offset "0,0,-8" \
+    --orthographic --fov 3 --width 1280 --height 720 --bg "0.2,0.2,0.2,1"
+```
+
+> 注意：截图使用**当前激活场景的灯光**渲染。若场景没有平行光，预制体可能偏暗——
+> 请确保截图时场景具备合适照明（你的地形编辑器工作流通常已有定向光）。
 
 ---
 
