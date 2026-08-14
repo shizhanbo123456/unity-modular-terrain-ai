@@ -52,6 +52,7 @@ unity-modular-terrain-ai/
 │   │       └── Runtime/…           #   BridgeServer / Dispatcher / 命令 / 特性
 │   └── python/                     #   Python 侧：纯标准库，零依赖
 │       ├── unity_bridge/           #   client.py / cli.py / __main__.py
+│       │   └── terrain_checks.py   #   相邻边高度校验 + 模块推荐（纯几何，供 layout-set/layout-recommend 复用）
 │       ├── scripts/mock_unity_server.py
 │       └── requirements.txt
 │
@@ -103,6 +104,11 @@ unity-modular-terrain-ai/
 | `terrain.layout_clear` | `layout-clear` / `lclear` | 清空排布，回到默认空 CSV |
 
 > 插件命令的 C# 实现位于 `modular-terrain/Unity/Assets/ModularTerrain/`，由桥接层反射自动发现，无需在桥接层写任何地形相关代码。
+
+**Python 侧附加能力**（非 Unity 命令，纯几何计算，逻辑在 `unity-python-bridge/python/unity_bridge/terrain_checks.py`）：
+- `layout-set`(`lset`) 写入前**强制校验相邻模块墙顶高度无缝拼接**，存在高度突变则拒绝写入。
+- `layout-recommend`(`lrec`) 推荐在指定网格坐标可无缝拼接的模块（含可行旋转与所需高度），不修改数据。
+- 两者每次都会先完整请求一遍全局配置、模块信息列表与当前排布，再在 Python 侧计算。
 
 ---
 

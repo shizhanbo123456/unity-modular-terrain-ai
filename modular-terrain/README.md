@@ -27,6 +27,7 @@ modular-terrain/
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | `int` | 模块唯一标识。**0 = 未分配**；经管理器 `LoadModules()` / `CollectModules()` 收集后，会自动为 `id==0` 的模块分配正数（从已分配最大值 +1 起依次递增，多个未分配依次 +1、+2、+3…），并持久化到对应 prefab |
+| `description` | `string` | 模块描述（可选）。仅用于地形推荐时的可读性输出，**不参与几何计算** |
 | `moduleSize` | `Vector2` | 模块长宽（米）。**x = 长（世界 X 方向），y = 宽（世界 Z 方向）** |
 | `heightZPlus` | `float` | +Z 边（z+）接连处局部高度 |
 | `heightXPlus` | `float` | +X 边（x+）接连处局部高度 |
@@ -34,6 +35,9 @@ modular-terrain/
 | `heightXMinus` | `float` | -X 边（x-）接连处局部高度 |
 
 几何约定：模块以自身 Transform 原点为底面中心（y=0 为底面），四条侧边各自从 y=0 延伸到该边高度。
+**相邻拼接约定**：模块四周墙顶的「世界高度」= 布局高度（placement height）+ 该边局部高度。
+相邻两模块在共享边处，墙顶世界高度必须相等才算无缝拼接；旋转（0/90/180/270，俯视顺时针）
+会改变「哪条局部边」落在哪个几何侧（见下文「相邻高度校验与推荐机制」）。
 **Gizmos**：用 `#if UNITY_EDITOR` 隔离，在编辑器中绘制一个「无盖无底」的盒子 —— 只画四条侧边的竖直墙面，不画顶盖与底面。
 
 ### `ModularTerrainManager`（模块化地形管理器，MonoBehaviour）
@@ -111,10 +115,10 @@ python -m unity_bridge terrain-config-get
 
 | 命令 | CLI | 作用 | 关键参数 |
 |---|---|---|---|
-| `terrain.module_list` | `module-list`(`mlist`) | 打印所有已加载模块的信息列表（id / 长宽 / 四边高度） | 无 |
+| `terrain.module_list` | `module-list`(`mlist`) | 打印所有已加载模块的信息列表（id / description / 长宽 / 四边高度） | 无 |
 | `terrain.module_size` | `module-size`(`msize`) | 计算指定 id 模块尺寸：长宽、四边高度、最大高度、是否符合精度 | `id`(int, 必填) |
 | `terrain.module_snap` | `module-snap`(`msnap`) | 把指定 id 模块的尺寸（sizeX/sizeZ 与四边高度）吸附到精度整数倍 | `id`(int, 必填) |
-| `terrain.module_set` | `module-set`(`mset`) | 按 id 设置模块指定字段，**仅设置传入的参数**，可多参数同时设置 | `id`(int, 必填)；`--sizeX`/`--length`、`--sizeZ`/`--width`、`--hZPlus`、`--hXPlus`、`--hZMinus`、`--hXMinus`(float, 可选) |
+| `terrain.module_set` | `module-set`(`mset`) | 按 id 设置模块指定字段，**仅设置传入的参数**，可多参数同时设置 | `id`(int, 必填)；`--sizeX`/`--length`、`--sizeZ`/`--width`、`--hZPlus`、`--hXPlus`、`--hZMinus`、`--hXMinus`(float, 可选)、`--desc`(string, 可选，设置 description) |
 
 > `module_set` 的字段名对照：`sizeX`/`length` = `moduleSize.x`（长/世界 X），`sizeZ`/`width` = `moduleSize.y`（宽/世界 Z），
 > `hZPlus/hXPlus/hZMinus/hXMinus` = 四边高度。例如「设置 x 轴上的范围为 0-6」即 `--sizeX 6`。
@@ -153,18 +157,68 @@ Unity 工程的 Resources CSV 中**，Python 侧只通过命令读写、绝不�
 | 命令 | CLI | 作用 | 关键参数 |
 |---|---|---|---|
 | `terrain.layout_get` | `layout-get`(`lget`) | 读取 `[xmin,zmin,xmax,zmax]` 范围内的排布；四参数均可省略（省略返回全部） | `xmin`/`zmin`/`xmax`/`zmax`(int, 可选) |
-| `terrain.layout_set` | `layout-set`(`lset`) | 在 `(x,z)` 写入单条排布（已存在则覆盖） | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
+| `terrain.layout_set` | `layout-set`(`lset`) | 在 `(x,z)` 写入单条排布（已存在则覆盖）；**写入前 Python 侧强制校验相邻高度无缝拼接**，存在高度突变则拒绝 | `x`/`z`(int)、`moduleId`(int)、`rotation`(0/90/180/270)、`height`(float) |
 | `terrain.layout_clear` | `layout-clear`(`lclear`) | 清空排布，回到默认空 CSV（仅保留表头） | 无 |
+| （Python 端，非 Unity 命令） | `layout-recommend`(`lrec`) | 推荐在 `(x,z)` 可无缝拼接的模块：输出每个可行模块的 `id`、描述、可用旋转与所需高度；不修改任何数据 | `--x`/`--z`(int, 必填)、`--height`(float, 可选，限定所需高度) |
 
 **约束**：
 - `rotation` 仅允许 `0 / 90 / 180 / 270`，表示**俯视视角下顺时针旋转**的角度（由后续实例化命令据此设置模块朝向）。
 - `(x, z)` 为网格坐标键；`layout_set` 对同一坐标写入会覆盖旧记录。
 
+---
+
+## 相邻高度校验与推荐机制（Python 侧）
+
+相邻拼接的核心约束是：**相邻两模块在共享边处的墙顶世界高度必须相等**。
+墙顶世界高度 = 布局高度（placement height，排布里记录的 `height`）+ 该边局部高度（`heightZPlus` 等）。
+哪条「局部边」落在哪个「几何侧」，由模块的 `rotation` 决定（俯视顺时针 0/90/180/270）。
+
+Python 侧（`unity-python-bridge/python/unity_bridge/terrain_checks.py` 为纯几何逻辑，`client.py` 负责编排）
+在每次**写入排布**或**获取推荐**时，都会**完整请求一遍全局配置、模块信息列表与当前排布**
+（`terrain.config_get` + `terrain.module_list` + `terrain.layout_get`），再据此计算。
+
+### 写入校验（layout-set 强制）
+
+`layout-set` 在真正下发给 Unity 写入 CSV **之前**：
+1. 拉取 config + 模块列表 + 当前全部排布；
+2. 对目标 `(x,z)` 四周的 4 个相邻格子（若存在且能查到模块库）：
+   - 计算本模块在该侧墙顶高 = `height + 局部边高度(本模块, rotation, 我方侧面)`；
+   - 计算邻居在该侧墙顶高 = `邻居.height + 局部边高度(邻居模块, 邻居.rotation, 邻居侧面)`；
+   - 两者差超过容差（1e-3 米）即记一条「高度不连续」错误。
+3. 只要存在任一条错误，**拒绝写入**并以 `UnityBridgeError` 打印全部错误，**CSV 不会被改动**；
+   全部通过才下发 `terrain.layout_set`。
+
+侧面映射（俯视，几何侧索引 Z+=0 / X+=1 / Z-=2 / X-=3）：
+- 邻居在 +X(dx=1)：我方 **X+** 边 对 邻居 **X-** 边；
+- 邻居在 -X(dx=-1)：我方 **X-** 边 对 邻居 **X+** 边；
+- 邻居在 +Z(dz=1)：我方 **Z+** 边 对 邻居 **Z-** 边；
+- 邻居在 -Z(dz=-1)：我方 **Z-** 边 对 邻居 **Z+** 边。
+
+旋转 k=rotation/90 步时，几何侧 `g` 上落着的局部边索引 = `(g - k) % 4`
+（局部边顺序 `[heightZPlus, heightXPlus, heightZMinus, heightXMinus]`）。
+
+### 推荐（layout-recommend，纯计算不写数据）
+
+在目标 `(x,z)`（通常当前为空），枚举模块库中每个候选模块、4 个旋转，求一组
+`(rotation, height)` 使该模块以该旋转与高度放置时能和四周已存在的相邻模块全部无缝拼接
+（各邻居要求的高度一致）。输出每个可行模块的：
+- `id`、`description`；
+- `rotations`：`[{rotation, height}, ...]`，即「在该旋转、该高度下可无缝拼接」。
+
+可选 `--height` 限定只返回「所需高度 == 该值」的拼接方式（例如只想找能平接在 height=0.5 上的方案）。
+
 Python 侧用法（`unity-python-bridge/python` 下）：
 
 ```bash
 # 在网格 (2,3) 放置模块 id=1：朝向 90°（俯视顺时针）、高度 0.5
+# （若四周已存在相邻模块且墙顶高度与该放置不连续，会被拒绝并打印错误）
 python -m unity_bridge layout-set --x 2 --z 3 --moduleId 1 --rotation 90 --height 0.5
+
+# 推荐 (2,3) 处可无缝拼接的模块（列出可行旋转与所需高度）
+python -m unity_bridge layout-recommend --x 2 --z 3
+
+# 仅推荐「所需高度 == 0.5」的拼接方式
+python -m unity_bridge layout-recommend --x 2 --z 3 --height 0.5
 
 # 读取 x∈[0,5], z∈[0,5] 范围内的排布
 python -m unity_bridge layout-get --xmin 0 --zmin 0 --xmax 5 --zmax 5
@@ -175,6 +229,11 @@ python -m unity_bridge layout-get
 # 清空排布（回到默认空 CSV）
 python -m unity_bridge layout-clear
 ```
+
+> 校验/推荐逻辑全部在 Python 侧（`terrain_checks.py`），与 Unity 命令总线解耦；
+> 这样无论是连接真实 Unity 还是 `scripts/mock_unity_server.py` 离线联调，行为一致。
+> 由于校验发生在写入前的 Python 层，若绕过 Python 直接调用 `terrain.layout_set` 不会触发校验，
+> 规范工作流请始终通过 `layout-set` CLI / `client.layout_set()`。
 
 ---
 

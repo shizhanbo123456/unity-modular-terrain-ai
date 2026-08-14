@@ -227,7 +227,9 @@ def _cmd_module_list(args) -> int:
     print(f"precision : {data.get('precision')}")
     print(f"count     : {data.get('count')}")
     for m in data.get("modules", []):
-        print(f"  id={m['id']:<3} sizeX={m['sizeX']} sizeZ={m['sizeZ']} "
+        desc = m.get("description", "")
+        print(f"  id={m['id']:<3} desc={desc!r}")
+        print(f"      sizeX={m['sizeX']} sizeZ={m['sizeZ']} "
               f"h(z+={m['heightZPlus']}, x+={m['heightXPlus']}, "
               f"z-={m['heightZMinus']}, x-={m['heightXMinus']})")
     return 0
@@ -275,6 +277,8 @@ def _cmd_module_set(args) -> int:
         val = getattr(args, key, None)
         if val is not None:
             fields[key] = val
+    if getattr(args, "desc", None) is not None:
+        fields["description"] = args.desc
     if not fields:
         print("[错误] 未提供任何要设置的字段（如 --sizeX 6）", file=sys.stderr)
         return 1
@@ -290,6 +294,8 @@ def _cmd_module_set(args) -> int:
     print(f"sizeZ   : {data.get('sizeZ')}")
     print(f"hZ+ x+ z- x- : {data.get('heightZPlus')} {data.get('heightXPlus')} "
           f"{data.get('heightZMinus')} {data.get('heightXMinus')}")
+    if "description" in (data.get("changed") or []):
+        print(f"desc    : {data.get('description')}")
     return 0
 
 
@@ -334,6 +340,29 @@ def _cmd_layout_clear(args) -> int:
         return 0
     print(f"csv    : {data.get('csvPath')}")
     print(f"cleared: {data.get('cleared')}  total={data.get('total')}")
+    return 0
+
+
+def _cmd_layout_recommend(args) -> int:
+    """推荐在 (x,z) 处可无缝拼接的模块（纯 Python 几何计算，不修改任何数据）。"""
+    with UnityClient(args.host, args.port, args.timeout) as client:
+        data = client.recommend_placement(args.x, args.z, args.height)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    recs = data.get("recommendations", [])
+    print(f"target       : (x={data.get('x')}, z={data.get('z')})  precision={data.get('precision')}")
+    if data.get("desiredHeight") is not None:
+        print(f"desiredHeight: {data.get('desiredHeight')}")
+    print(f"count        : {data.get('count')}")
+    if not recs:
+        print("  （无可用模块：无法与四周现有模块无缝拼接，或四周模块库缺失）")
+        return 0
+    for r in recs:
+        desc = r.get("description", "")
+        print(f"  module id={r['id']}  desc={desc!r}")
+        for rot in r.get("rotations", []):
+            print(f"      rotation={rot['rotation']}  height={rot['height']}")
     return 0
 
 
@@ -430,6 +459,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_mset.add_argument("--hXPlus", type=float, default=None, help="设置 +X 边高度")
     p_mset.add_argument("--hZMinus", type=float, default=None, help="设置 -Z 边高度")
     p_mset.add_argument("--hXMinus", type=float, default=None, help="设置 -X 边高度")
+    p_mset.add_argument("--desc", default=None, help="设置模块描述（字符串）")
     p_mset.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_mset.set_defaults(func=_cmd_module_set)
 
@@ -460,6 +490,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="清空地形排布，回到默认空 CSV")
     p_lclear.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
     p_lclear.set_defaults(func=_cmd_layout_clear)
+
+    p_lrec = sub.add_parser(
+        "layout-recommend", aliases=["lrec"],
+        help="推荐在 (x,z) 可无缝拼接的模块（含可用旋转与所需高度），不修改数据")
+    p_lrec.add_argument("--x", type=int, required=True, help="目标网格坐标 X")
+    p_lrec.add_argument("--z", type=int, required=True, help="目标网格坐标 Z")
+    p_lrec.add_argument("--height", type=float, default=None,
+                        help="期望放置高度（可选）；给定后只返回所需高度==该值的旋转")
+    p_lrec.add_argument("--json", action="store_true", help="输出原始 JSON 而非文本")
+    p_lrec.set_defaults(func=_cmd_layout_recommend)
 
     return parser
 

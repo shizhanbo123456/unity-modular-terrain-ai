@@ -49,19 +49,23 @@ COMMANDS = [
     {"name": "prefab.screenshot", "description": "将预制体复制到场景隔离位置并截图保存为 PNG。参数: path(string), offset{x,y,z}, output(string,.png), orthographic(bool), fov(number), width(int), height(int), bg(string)"},
     {"name": "terrain.config_get", "description": "读取 Unity 管理器预制体中的全局模块配置。无参数"},
     {"name": "terrain.config_set", "description": "将全局模块配置写入 Unity 管理器预制体。参数: sizePrecision(number>0), moduleDirectories(array<string>)"},
-    {"name": "terrain.module_list", "description": "打印模块信息列表。无参数"},
+    {"name": "terrain.module_list", "description": "打印模块信息列表（含 description）。无参数"},
     {"name": "terrain.module_size", "description": "计算指定 id 模块的尺寸。参数: id(int)"},
     {"name": "terrain.module_snap", "description": "把指定 id 模块的尺寸吸附到精度整数倍。参数: id(int)"},
-    {"name": "terrain.module_set", "description": "按 id 设置模块指定字段。参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus(float)"},
+    {"name": "terrain.module_set", "description": "按 id 设置模块指定字段。参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus(float), description(string)"},
     {"name": "terrain.layout_get", "description": "读取范围内地形排布。参数: xmin,zmin,xmax,zmax(int，均可省略；省略返回全部)"},
-    {"name": "terrain.layout_set", "description": "写入单个排布。参数: x,z(int 网格坐标), moduleId(int), rotation(0/90/180/270 俯视顺时针), height(float)"},
+    {"name": "terrain.layout_set", "description": "写入单个排布（Python 侧写入前强制校验相邻高度无缝拼接）。参数: x,z(int 网格坐标), moduleId(int), rotation(0/90/180/270 俯视顺时针), height(float)"},
     {"name": "terrain.layout_clear", "description": "清空地形排布，回到默认空 CSV。无参数"},
 ]
 
 # 离线模拟的地形模块与全局配置（仅用于无 Unity 环境联调）
 MOCK_MODULES = [
-    {"id": 1, "sizeX": 10, "sizeZ": 10, "heightZPlus": 1, "heightXPlus": 1, "heightZMinus": 1, "heightXMinus": 1},
-    {"id": 2, "sizeX": 20, "sizeZ": 10, "heightZPlus": 2, "heightXPlus": 2, "heightZMinus": 2, "heightXMinus": 2},
+    {"id": 1, "sizeX": 10, "sizeZ": 10, "heightZPlus": 1, "heightXPlus": 1,
+     "heightZMinus": 1, "heightXMinus": 1, "description": "标准平地 10x10（四边等高）"},
+    {"id": 2, "sizeX": 20, "sizeZ": 10, "heightZPlus": 2, "heightXPlus": 2,
+     "heightZMinus": 2, "heightXMinus": 2, "description": "加高平地 20x10（四边等高）"},
+    {"id": 3, "sizeX": 10, "sizeZ": 10, "heightZPlus": 3, "heightXPlus": 1,
+     "heightZMinus": 1, "heightXMinus": 1, "description": "北高南低斜坡 10x10（+Z 边局部高 3）"},
 ]
 MOCK_UNITY_CONFIG = {"sizePrecision": 0.5, "moduleDirectories": ["Assets/ModularTerrain/Modules"]}
 MOCK_LAYOUT: list = []  # 离线模拟的地形排布：[{x,z,moduleId,rotation,height}, ...]
@@ -284,6 +288,9 @@ def mock_module_set(args: dict) -> dict:
             else:
                 m[key] = val
             changed.append(key)
+    if "description" in args and args["description"] is not None:
+        m["description"] = str(args["description"])
+        changed.append("description")
     if not changed:
         raise ValueError("未提供任何要设置的字段")
     return {
@@ -291,6 +298,7 @@ def mock_module_set(args: dict) -> dict:
         "sizeX": m["sizeX"], "sizeZ": m["sizeZ"],
         "heightZPlus": m["heightZPlus"], "heightXPlus": m["heightXPlus"],
         "heightZMinus": m["heightZMinus"], "heightXMinus": m["heightXMinus"],
+        "description": m["description"],
     }
 
 

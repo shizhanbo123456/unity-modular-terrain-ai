@@ -65,6 +65,7 @@ namespace ModularTerrain
                 list.Add(new Dictionary<string, object>
                 {
                     ["id"] = m.id,
+                    ["description"] = m.description,
                     ["sizeX"] = m.moduleSize.x,
                     ["sizeZ"] = m.moduleSize.y,
                     ["heightZPlus"] = m.heightZPlus,
@@ -143,7 +144,7 @@ namespace ModularTerrain
 
         [BridgeCommand("terrain.module_set",
             "按 id 设置模块指定字段（仅设置传入的参数，可同时设置多个）。" +
-            "参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus (float)")]
+            "参数: id(int), sizeX/length, sizeZ/width, hZPlus, hXPlus, hZMinus, hXMinus (float), description(string)")]
         public static object ModuleSet(BridgeContext ctx, JObject args)
         {
             int id = RequireId(args);
@@ -161,6 +162,11 @@ namespace ModularTerrain
             if (TryGetFloat(args, "hXPlus", out v)) { m.heightXPlus = v; changed.Add("hXPlus"); }
             if (TryGetFloat(args, "hZMinus", out v)) { m.heightZMinus = v; changed.Add("hZMinus"); }
             if (TryGetFloat(args, "hXMinus", out v)) { m.heightXMinus = v; changed.Add("hXMinus"); }
+            if (args.ContainsKey("description"))
+            {
+                m.description = args.Value<string>("description");
+                changed.Add("description");
+            }
 
             if (changed.Count == 0)
                 throw new System.ArgumentException("未提供任何要设置的字段（如 --sizeX 6）");

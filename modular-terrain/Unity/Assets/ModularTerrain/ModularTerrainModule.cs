@@ -10,10 +10,16 @@ namespace ModularTerrain
     ///
     /// 参数:
     ///   id (int) - 模块唯一标识。0 = 未分配；收集进管理器时自动分配正数。
+    ///   description (string) - 模块描述（可选）。仅用于地形推荐时的可读性输出，不参与几何计算。
     ///   moduleSize (Vector2) - 模块的长宽（单位：米）。
     ///        x = 长（沿世界 X 方向），y = 宽（沿世界 Z 方向）。
     ///   heightZPlus / heightXPlus / heightZMinus / heightXMinus (float)
     ///        四个方向接连处（连接边）的局部高度，顺序为 (z+, x+, z-, x-)：
+    ///
+    /// 相邻拼接约定（供 Python 侧校验/推荐使用）：
+    ///   模块以自身原点为底面中心（y=0），四周墙顶世界高度 = 布局高度(placement height) + 该边局部高度。
+    ///   相邻两模块在共享边处，墙顶世界高度必须相等才算无缝拼接；
+    ///   旋转（0/90/180/270，俯视顺时针）会改变「哪条局部边」落在哪个几何侧。
     ///          z+ = +Z 边, x+ = +X 边, z- = -Z 边, x- = -X 边。
     ///
     /// 几何约定：模块以自身 Transform 原点为底面中心（y=0 为底面），
@@ -27,6 +33,9 @@ namespace ModularTerrain
         [Header("模块标识")]
         [Tooltip("模块唯一 ID。0 表示未分配；收集到管理器时会自动分配正数（已分配最大值 +1 递增）。")]
         public int id = 0;
+
+        [Tooltip("模块描述（可选）。用于地形推荐时的可读性输出，不参与几何计算。")]
+        public string description = "";
 
         [Tooltip("模块长宽（米）。x = 长（世界 X 方向），y = 宽（世界 Z 方向）。")]
         public Vector2 moduleSize = new Vector2(10f, 10f);

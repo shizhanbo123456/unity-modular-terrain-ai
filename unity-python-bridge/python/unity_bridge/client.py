@@ -12,6 +12,8 @@ import json
 import socket
 from typing import Any, Optional
 
+from .terrain_checks import check_placement, recommend
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 21927
 
@@ -181,13 +183,54 @@ class UnityClient:
     def layout_set(self, x: int, z: int, module_id: int, rotation: int, height: float) -> dict:
         """写入单个地形排布（命令 terrain.layout_set）。
 
-        数据全部存储在 Unity 工程的 Resources CSV。旋转 rotation 仅允许 0/90/180/270
-        （俯视视角顺时针），由 Unity 侧校验。
+        写入前**强制校验相邻模块高度无缝拼接**：先完整请求一遍全局配置、模块信息列表与当前
+        排布，再用 terrain_checks.check_placement 检查四周相邻模块在共享边的墙顶高度是否相等；
+        若存在高度突变则拒绝写入并以 UnityBridgeError 打印错误信息（数据不会被修改）。
+        数据全部存储在 Unity 工程的 Resources CSV。
         """
+        config = self.get_terrain_config()
+        modules = self.module_list()["modules"]
+        layout = self.layout_get()["entries"]
+
+        ok, errors = check_placement(
+            config, modules, layout, x, z, module_id, rotation, height
+        )
+        if not ok:
+            msg = (
+                f"拒绝写入 (x={x}, z={z}, moduleId={module_id}, "
+                f"rotation={rotation}, height={height})：检测到与相邻模块高度不连续。\n"
+                + "\n".join(f"  - {e}" for e in errors)
+            )
+            raise UnityBridgeError(msg)
+
         return self.call(
             "terrain.layout_set",
             x=x, z=z, moduleId=module_id, rotation=rotation, height=height,
         )
+
+    def recommend_placement(
+        self, x: int, z: int, desired_height: Optional[float] = None
+    ) -> dict:
+        """推荐在 (x,z) 可无缝拼接的模块（命令侧无新增 Unity 命令，纯 Python 几何计算）。
+
+        每次都完整请求一遍全局配置、模块信息列表与当前排布，再调用 terrain_checks.recommend
+        枚举候选模块的可行旋转与所需高度。返回:
+            {"x":, "z":, "desiredHeight":, "precision":, "count":, "recommendations": [...]}
+        每个推荐项含 id、description、rotations（[{rotation, height}]）。
+        """
+        config = self.get_terrain_config()
+        modules = self.module_list()["modules"]
+        layout = self.layout_get()["entries"]
+
+        recs = recommend(config, modules, layout, x, z, desired_height)
+        return {
+            "x": x,
+            "z": z,
+            "desiredHeight": desired_height,
+            "precision": config.get("sizePrecision"),
+            "count": len(recs),
+            "recommendations": recs,
+        }
 
     def layout_clear(self) -> dict:
         """清空地形排布，回到默认空 CSV（命令 terrain.layout_clear）。"""
